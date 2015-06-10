@@ -1,0 +1,12 @@
+{application, pbpc,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { pbpc_app, []}},
+  {env, []}
+ ]}.
