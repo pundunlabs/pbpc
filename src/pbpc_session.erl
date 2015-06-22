@@ -1,3 +1,25 @@
+%%%===================================================================
+%% @author Erdem Aksu
+%% @copyright 2015 Pundun Labs AB
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%% http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+%% implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+%% -------------------------------------------------------------------
+%% @title Pundun Binary Protocol Client Session Handler
+%% @doc
+%% Module Description:
+%% @end
+%%%===================================================================
+
 -module(pbpc_session).
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).
@@ -44,8 +66,8 @@ init(Args) ->
     case connect(IP, Port, Username, Password) of
 	{ok, Socket} ->
 	    {ok, #state{socket = Socket}};
-	{error, Reason} ->
-	    {stop, Reason}
+	{error, _Reason} ->
+	    {stop, normal}
     end.
 
 handle_call(_Request, _From, State) ->
@@ -147,20 +169,42 @@ authenticate(wait_server_final_message, Map) ->
     receive
 	{tcp, Socket, Data} ->
 	    ScramData = scramerl_lib:parse(Data),
-	    Verifier = maps:get(verifier, ScramData),
-	    SaltedPassword = maps:get(salted_password, Map),
-	    AuthMessage = maps:get(auth_message, Map),
-	    io:format("SaltedPassword: ~p~n",[SaltedPassword]),
-	    io:format("AuthMessage: ~p~n",[AuthMessage]),
-	    io:format("Verifier: ~p~n",[Verifier]),
-	    case scramerl:server_signature(SaltedPassword, AuthMessage) of
+	    case maps:get(verifier, ScramData, undefined) of
+		undefined ->
+		    handle_server_error(ScramData);
 		Verifier ->
-		    {ok, Socket};
-		Elsr ->
-		    io:format("ServerSignature: ~p ~n",[Elsr]),
-		    {error, server_verification}
+		    verify_server_signature(Socket, Verifier, Map)
 	    end
     after
 	5000 ->
 	    {error, timeout}
+    end.
+
+-spec verify_server_signature(Socket :: port(),
+			      Verifier :: string(),
+			      Map :: map()) ->
+    {ok, Socket :: port()} | {error, Reason :: term()}.
+verify_server_signature(Socket, Verifier, Map) ->
+    SaltedPassword = maps:get(salted_password, Map),
+    AuthMessage = maps:get(auth_message, Map),
+    io:format("SaltedPassword: ~p~n",[SaltedPassword]),
+    io:format("AuthMessage: ~p~n",[AuthMessage]),
+    io:format("Verifier: ~p~n",[Verifier]),
+    case scramerl:server_signature(SaltedPassword, AuthMessage) of
+	Verifier ->
+	    {ok, Socket};
+	Elsr ->
+	    io:format("ServerSignature: ~p ~n",[Elsr]),
+	    {error, server_verification}
+    end.
+
+-spec handle_server_error(ScramData :: map()) ->
+    {error, Reason :: term()}.
+handle_server_error(ScramData) ->
+    case maps:get('server-error', ScramData, undefined) of
+	undefined ->
+	    {error, server_verification};
+	Error ->
+	    io:format("Server Error: ~p~n",[Error]),
+	    {error, Error}
     end.
