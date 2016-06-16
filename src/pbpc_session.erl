@@ -213,7 +213,7 @@ handle_call(_Request, _From, State) ->
     {stop, Reason :: term(), State :: #state{}}.
 handle_cast(disconnect, State = #state{socket = Socket}) ->
     ?debug("Closing socket: ~p", [Socket]),
-    ok = gen_tcp:close(Socket),
+    ok = ssl:close(Socket),
     {stop, normal, State};
 handle_cast({reply, Req = #request{from = Reply}, PDU},
 	    State = #state{transaction_register = TR}) ->
@@ -235,13 +235,13 @@ handle_cast(_Msg, State) ->
     {noreply, State :: #state{}} |
     {noreply, State :: #state{}, Timeout :: integer()} |
     {stop, Reason :: term(), State :: #state{}}.
-handle_info({tcp_closed, Port}, State) ->
-    ?debug("tcp_closed: ~p, stopping..", [Port]),
-    {stop, tcp_closed, State};
-handle_info({tcp, Socket, Data}, State = #state{transaction_register = TR}) ->
-    ?debug("Received tcp data: ~p",[Data]),
+handle_info({ssl_closed, Port}, State) ->
+    ?debug("ssl_closed: ~p, stopping..", [Port]),
+    {stop, ssl_closed, State};
+handle_info({ssl, Socket, Data}, State = #state{transaction_register = TR}) ->
+    ?debug("Received ssl data: ~p",[Data]),
     spawn_link(?MODULE, handle_incomming_data, [Data, TR]),
-    ok = mochiweb_socket:setopts(Socket, [{active, once}]),
+    ok = ssl:setopts(Socket, [{active, once}]),
     {noreply, State};
 handle_info(_Info, State) ->
     ?debug("Unhandled info received: ~p", [_Info]),
@@ -280,7 +280,7 @@ send_request(Procedure, From,
 	   BinData :: term()) ->
     ok | {error, Reason :: term()}.
 send(Socket, {ok, Bin}) when is_binary(Bin) ->
-    case gen_tcp:send(Socket, Bin) of
+    case ssl:send(Socket, Bin) of
 	ok ->
 	    ok;
 	{error, Reason} ->
@@ -295,7 +295,7 @@ send(_Socket, {error, Reason}) ->
 	      Password :: string()) ->
     {ok, Socket :: port()} | {error, Reason :: term()}.
 connect(IP, Port, Username, Password) ->
-    case gen_tcp:connect(IP, Port, [{active,false}, {packet,0}]) of
+    case ssl:connect(IP, Port, [{active,false}, {packet,0}]) of
 	{ok, Socket} ->
 	    authenticate(Socket, Username, Password);
 	{error, Reason} ->
@@ -321,9 +321,9 @@ authenticate(init, Map) ->
     Gs2Header = scramerl:gs2_header(),
     ClientFirstMsg = Gs2Header ++ ClientFirstMsgBare,
     io:format("Pid: ~p~n",[self()]),
-    case gen_tcp:send(Socket, ClientFirstMsg) of
+    case ssl:send(Socket, ClientFirstMsg) of
 	ok ->
-	    ok = inet:setopts(Socket, [{active, once}]),
+	    ok = ssl:setopts(Socket, [{active, once}]),
 	    NewMap = maps:put(client_first_msg_bare, ClientFirstMsgBare, Map),
 	    authenticate(wait_server_first_message, NewMap);
 	{error, Reason} ->
@@ -331,7 +331,7 @@ authenticate(init, Map) ->
     end;
 authenticate(wait_server_first_message, Map) ->
     receive
-	{tcp, Socket, Data} ->
+	{ssl, Socket, Data} ->
 	    ScramData = scramerl_lib:parse(Data),
 	    Salt = maps:get(salt, ScramData),
 	    IterCount = maps:get('iteration-count', ScramData),
@@ -352,11 +352,11 @@ authenticate(wait_server_first_message, Map) ->
 	    ClientFinalMsg = scramerl:client_final_message(Nonce,
 							   SaltedPassword,
 							   AuthMessage),
-	    case gen_tcp:send(Socket, ClientFinalMsg) of
+	    case ssl:send(Socket, ClientFinalMsg) of
 		ok ->
 		    NewMap1 = maps:put(salted_password, SaltedPassword, Map),
 		    NewMap2 = maps:put(auth_message, AuthMessage, NewMap1),
-		    ok = inet:setopts(Socket, [{active, once}]),
+		    ok = ssl:setopts(Socket, [{active, once}]),
 		    authenticate(wait_server_final_message, NewMap2);
 		{error, Reason} ->
 		    {error, Reason}
@@ -368,8 +368,8 @@ authenticate(wait_server_first_message, Map) ->
     end;
 authenticate(wait_server_final_message, Map) ->
     receive
-	{tcp, Socket, Data} ->
-	    ok = mochiweb_socket:setopts(Socket, [{active, once}]),
+	{ssl, Socket, Data} ->
+	    ok = ssl:setopts(Socket, [{active, once}]),
 	    ScramData = scramerl_lib:parse(Data),
 	    case maps:get(verifier, ScramData, undefined) of
 		undefined ->

@@ -7,5 +7,6 @@ exec erl \
     -pa ebin deps/*/ebin \
     -boot start_sasl \
     -sname $name \
+    -s ssl start \
     -s gb_log_sup start_link \
     -s pbpc_app start
