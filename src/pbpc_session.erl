@@ -333,7 +333,7 @@ authenticate(wait_server_first_message, Map) ->
     receive
 	{ssl, Socket, Data} ->
 	    ScramData = scramerl_lib:parse(Data),
-	    Salt = maps:get(salt, ScramData),
+	    Salt = base64:decode_to_string(maps:get(salt, ScramData)),
 	    IterCount = maps:get('iteration-count', ScramData),
 	    Nonce = maps:get(nonce, ScramData),
 	    Password = maps:get(password, Map),
