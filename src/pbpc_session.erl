@@ -41,9 +41,9 @@
 	 code_change/3,
 	 handle_incomming_data/2]).
 
--include("gb_log.hrl").
 -include("pbpc.hrl").
 -include("APOLLO-PDU-Descriptions.hrl").
+-include_lib("gb_log/include/gb_log.hrl").
 
 -record(state, {socket,
 		transaction_register,
