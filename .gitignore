@@ -50,4 +50,7 @@ rel/files
 #other
 .concrete/DEV_MODE
 rebar.lock
-apollo
+include/apollo_pb.hrl
+include/gpb
+src/apollo_pb.erl
+

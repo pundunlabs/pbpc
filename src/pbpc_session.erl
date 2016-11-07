@@ -39,7 +39,7 @@
 	 handle_info/2,
          terminate/2,
 	 code_change/3,
-	 handle_incomming_data/2]).
+	 handle_incomming_data/3]).
 
 -include("pbpc.hrl").
 -include("APOLLO-PDU-Descriptions.hrl").
@@ -74,10 +74,11 @@ start_link(Args) ->
 %% Handle the received response messages.
 %% @end
 %%--------------------------------------------------------------------
--spec handle_incomming_data(Data :: binary(),
+-spec handle_incomming_data(CorrId :: binary(),
+			    Data :: list(),
 			    TransactionRegister :: pid())->
     ok.
-handle_incomming_data(Data, TransactionRegister) ->
+handle_incomming_data(CorrID, Data, TransactionRegister) ->
     {ok, PDU = #'APOLLO-PDU'{transactionId = Tid}} = pbpc_lib:decode(Data),
     ?debug("Decoded PDU: ~p", [PDU]),
     case lookup_request(TransactionRegister, Tid) of
@@ -103,6 +104,7 @@ init(Args) ->
     Password = proplists:get_value(password, Args),
     case connect(IP, Port, Username, Password) of
 	{ok, Socket} ->
+	    ssl:setopts(Socket, [{packet, 4}]),
 	    TR = ets:new(transaction_register, [set, public, {keypos, 2}]),
 	    Counter = ets:new(counter, [set, protected]),
 	    ets:insert(Counter, {transaction_id, ?TID_THRESHOLD}),
@@ -238,9 +240,9 @@ handle_cast(_Msg, State) ->
 handle_info({ssl_closed, Port}, State) ->
     ?debug("ssl_closed: ~p, stopping..", [Port]),
     {stop, ssl_closed, State};
-handle_info({ssl, Socket, Data}, State = #state{transaction_register = TR}) ->
+handle_info({ssl, Socket, [B1,B2 | Data]}, State = #state{transaction_register = TR}) ->
     ?debug("Received ssl data: ~p",[Data]),
-    spawn_link(?MODULE, handle_incomming_data, [Data, TR]),
+    spawn_link(?MODULE, handle_incomming_data, [<<B1,B2>>, Data, TR]),
     ok = ssl:setopts(Socket, [{active, once}]),
     {noreply, State};
 handle_info(_Info, State) ->
@@ -265,10 +267,10 @@ send_request(Procedure, From,
 	     State = #state{socket = Socket,
 			    transaction_register = TR,
 			    counter = Counter}) ->
-    PDU = get_pdu(Counter, Procedure),
+    {Tid, PDU} = get_pdu(Counter, Procedure),
     ?debug("Encoding PDU: ~p", [PDU]),
     Bin = pbpc_lib:encode(PDU),
-    case send(Socket, Bin) of
+    case send(Socket, Tid, Bin) of
 	ok ->
 	    ok = register_request(TR, PDU, From),
 	    {noreply, State};
@@ -277,17 +279,27 @@ send_request(Procedure, From,
     end.
 
 -spec send(Socket :: port(),
+	   Tid :: integer(),
 	   BinData :: term()) ->
     ok | {error, Reason :: term()}.
-send(Socket, {ok, Bin}) when is_binary(Bin) ->
-    case ssl:send(Socket, Bin) of
+send(Socket, Tid, {ok, Bin}) when is_binary(Bin) ->
+    CorrId = encode_unsigned_16(Tid),
+    case ssl:send(Socket, [CorrId,Bin]) of
 	ok ->
 	    ok;
 	{error, Reason} ->
 	    {error, Reason}
     end;
-send(_Socket, {error, Reason}) ->
+send(_Socket, _, {error, Reason}) ->
     {error, Reason}.
+
+-spec encode_unsigned_16(Int :: integer()) ->
+    binary().
+encode_unsigned_16(Int) ->
+    case binary:encode_unsigned(Int, big) of
+	<<B>> -> <<0,B>>;
+	<<B1,B2>> -> <<B1, B2>>
+    end.
 
 -spec connect(IP :: string(),
 	      Port :: pos_integer(),
@@ -295,7 +307,7 @@ send(_Socket, {error, Reason}) ->
 	      Password :: string()) ->
     {ok, Socket :: port()} | {error, Reason :: term()}.
 connect(IP, Port, Username, Password) ->
-    case ssl:connect(IP, Port, [{active,false}, {packet,0}]) of
+    case ssl:connect(IP, Port, [{active,false}]) of
 	{ok, Socket} ->
 	    authenticate(Socket, Username, Password);
 	{error, Reason} ->
@@ -440,11 +452,12 @@ unregister_request(TR, Req) ->
 
 -spec get_pdu(Counter :: integer(),
 	      Procedure :: {atom(), term()}) ->
-    #'APOLLO-PDU'{}.
+    {integer(), #'APOLLO-PDU'{}}.
 get_pdu(Counter, Procedure) ->
-    #'APOLLO-PDU'{version = get_version(),
-		  transactionId = get_transaction_id(Counter),
-		  procedure = Procedure}.
+    Tid = get_transaction_id(Counter),
+    {Tid, #'APOLLO-PDU'{version = get_version(),
+			transactionId = Tid,
+			procedure = Procedure}}.
 
 -spec get_version() ->
     #'Version'{}.
@@ -509,7 +522,9 @@ get_return_value(#'APOLLO-PDU'{procedure =
 			    {comparator, comparator()} |
 			    {timeSeries, boolean()} |
 			    {shards, integer()} |
-			    {clusters, [#'Cluster'{}]}.
+			    {distributed, boolean()} |
+			    {replicationFactor, integer()} |
+			    {hashExclude, [string()]}.
 
 -spec make_set_of_table_option(Options :: [table_option()]) ->
     [pbp_table_option()].
@@ -541,10 +556,12 @@ make_set_of_table_option([{time_series, T}|Rest], Acc) ->
     make_set_of_table_option(Rest, [{timeSeries, T} | Acc]);
 make_set_of_table_option([{shards, S}|Rest], Acc) ->
     make_set_of_table_option(Rest, [{shards, S} | Acc]);
-make_set_of_table_option([{clusters, CList}|Rest], Acc) ->
-    Clusters = [#'Cluster'{name = Name,
-			  replicationFactor = RF} || {Name, RF} <- CList],
-    make_set_of_table_option(Rest, [{clusters, Clusters} | Acc]);
+make_set_of_table_option([{distributed, D}|Rest], Acc) ->
+    make_set_of_table_option(Rest, [{distributed, D} | Acc]);
+make_set_of_table_option([{replication_factor, RF}|Rest], Acc) ->
+    make_set_of_table_option(Rest, [{replicationFactor, RF} | Acc]);
+make_set_of_table_option([{hash_exclude, HE}|Rest], Acc) ->
+    make_set_of_table_option(Rest, [{hashExclude, HE} | Acc]);
 make_set_of_table_option([_Else|Rest], Acc) ->
     ?debug("Unknown table option: ~p", [_Else]),
     make_set_of_table_option(Rest, Acc).

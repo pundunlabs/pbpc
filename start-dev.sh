@@ -4,7 +4,7 @@ export PRODDIR=`pwd`
 name=${1:-pbpc}
 
 exec erl \
-    -pa ebin deps/*/ebin \
+    -pa _build/default/lib/*/ebin \
     -boot start_sasl \
     -sname $name \
     -s ssl start \
