@@ -23,7 +23,7 @@
 
 -export([connect/4,
 	 disconnect/1,
-	 create_table/6,
+	 create_table/4,
 	 delete_table/2,
 	 open_table/2,
 	 close_table/2,
@@ -31,6 +31,7 @@
 	 table_info/3,
 	 read/3,
 	 write/4,
+	 update/4,
 	 delete/3,
 	 read_range/4,
 	 read_range_n/4,
@@ -43,7 +44,6 @@
 
 -include("pbpc.hrl").
 
--define(REQ_TIMEOUT, 20000).
 %%%===================================================================
 %%% API functions
 %%%===================================================================
@@ -60,15 +60,7 @@
 	      Password :: string()) ->
     {ok, Session :: pid()} | {error, Reason :: term()}.
 connect(IP, Port, Username, Password) ->
-    ChildArgs = [{ip, IP}, {port, Port},
-		 {username, Username},
-		 {password, Password}],
-    case supervisor:start_child(pbpc_session_sup, [ChildArgs]) of
-	{ok, Pid} ->
-	    {ok, Pid};
-	{error, Reason} ->
-	    {error, Reason}
-    end.
+    pbpc_session:connect(IP, Port, Username, Password).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -78,7 +70,7 @@ connect(IP, Port, Username, Password) ->
 -spec disconnect(Session :: pid()) ->
     ok.
 disconnect(Session) ->
-    gen_server:cast(Session, disconnect).
+    pbpc_session:disconnect(Session).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -86,13 +78,10 @@ disconnect(Session) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec create_table(Session :: pid(), TabName :: string(),
-		   KeyDef :: [atom()], ColumnsDef :: [atom()],
-		   IndexesDef :: [atom()],
-		   Options :: [table_option()])->
+		   KeyDef :: [atom()], Options :: [table_option()])->
     ok | {error, Reason :: term()}.
-create_table(Session, TabName, KeyDef, ColumnsDef, IndexesDef, Options) ->
-    gen_server:call(Session, {create_table, TabName, KeyDef, ColumnsDef,
-			      IndexesDef, Options}, ?REQ_TIMEOUT).
+create_table(Session, TabName, KeyDef, Options) ->
+    pbpc_session:create_table(Session, TabName, KeyDef, Options).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -102,7 +91,7 @@ create_table(Session, TabName, KeyDef, ColumnsDef, IndexesDef, Options) ->
 -spec delete_table(Session :: pid(), TabName :: string())->
     ok | {error, Reason :: term()}.
 delete_table(Session, TabName) ->
-    gen_server:call(Session, {delete_table, TabName}, ?REQ_TIMEOUT).
+    pbpc_session:delete_table(Session, TabName).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -112,7 +101,7 @@ delete_table(Session, TabName) ->
 -spec open_table(Session :: pid(), TabName :: string())->
     ok | {error, Reason :: term()}.
 open_table(Session, TabName) ->
-    gen_server:call(Session, {open_table, TabName}, ?REQ_TIMEOUT).
+    pbpc_session:open_table(Session, TabName).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -122,7 +111,7 @@ open_table(Session, TabName) ->
 -spec close_table(Session :: pid(), TabName :: string())->
     ok | {error, Reason :: term()}.
 close_table(Session, TabName) ->
-    gen_server:call(Session, {close_table, TabName}, ?REQ_TIMEOUT).
+    pbpc_session:close_table(Session, TabName).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -133,7 +122,7 @@ close_table(Session, TabName) ->
 		 TabName :: string()) ->
     [{atom(), term()}] | {error, Reason :: term()}.
 table_info(Session, TabName) ->
-    gen_server:call(Session, {table_info, TabName}, ?REQ_TIMEOUT).
+    pbpc_session:table_info(Session, TabName).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -145,7 +134,7 @@ table_info(Session, TabName) ->
 		 Attributes :: [string()]) ->
     [{atom(), term()}] | {error, Reason :: term()}.
 table_info(Session, TabName, Attributes) ->
-    gen_server:call(Session, {table_info, TabName, Attributes}, ?REQ_TIMEOUT).
+    pbpc_session:table_info(Session, TabName, Attributes).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -157,7 +146,7 @@ table_info(Session, TabName, Attributes) ->
 	   Key :: key())->
     {ok, value()} | {error, Reason :: term()}.
 read(Session, TabName, Key) ->
-    gen_server:call(Session, {read, TabName, Key}, ?REQ_TIMEOUT).
+    pbpc_session:read(Session, TabName, Key).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -165,12 +154,35 @@ read(Session, TabName, Key) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec write(Session :: pid(),
-	   TabName :: string(),
-	   Key :: key(),
-	   Columns :: [column()])->
+	    TabName :: string(),
+	    Key :: key(),
+	    Columns :: [column()])->
     ok | {error, Reason :: term()}.
 write(Session, TabName, Key, Columns) ->
-    gen_server:call(Session, {write, TabName, Key, Columns}, ?REQ_TIMEOUT).
+    pbpc_session:write(Session, TabName, Key, Columns).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Update Key according to Op on the table TabName.
+%% field_name() :: string().
+%% treshold() :: pos_integer().
+%% setvalue() :: pos_integer().
+%% update_instruction() :: increment |
+%%                         {increment, treshold(), setvalue()} |
+%%                         overwrite.
+%% data() :: pos_integer() | term().
+%% default() :: pos_integer() | term().
+%% Op :: [{field_name(), instruction(), data()} |
+%%        {field_name(), instruction(), data(), default()}].
+%% @end
+%%--------------------------------------------------------------------
+-spec update(Session :: pid(),
+	     TabName :: string(),
+	     Key :: key(),
+	     Op :: [update_op()])->
+    {ok, value()} | {error, Reason :: term()}.
+update(Session, TabName, Key, Op) ->
+    pbpc_session:update(Session, TabName, Key, Op).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -182,7 +194,7 @@ write(Session, TabName, Key, Columns) ->
 	     Key :: key())->
     ok | {error, Reason :: term()}.
 delete(Session, TabName, Key) ->
-    gen_server:call(Session, {delete, TabName, Key}, ?REQ_TIMEOUT).
+    pbpc_session:delete(Session, TabName, Key).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -196,7 +208,7 @@ delete(Session, TabName, Key) ->
 		 Chunk :: pos_integer()) ->
     {ok, [kvp()], Cont::complete | key()} | {error, Reason :: term()}.
 read_range(Session, TabName, KeyRange, Chunk) ->
-    gen_server:call(Session, {read_range, TabName, KeyRange, Chunk}, ?REQ_TIMEOUT).
+    pbpc_session:read_range(Session, TabName, KeyRange, Chunk).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -210,7 +222,7 @@ read_range(Session, TabName, KeyRange, Chunk) ->
 		   N :: pos_integer()) ->
     {ok, [kvp()]} | {error, Reason :: term()}.
 read_range_n(Session, TabName, StartKey, N) ->
-    gen_server:call(Session, {read_range_n, TabName, StartKey, N}, ?REQ_TIMEOUT).
+    pbpc_session:read_range_n(Session, TabName, StartKey, N).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -224,7 +236,7 @@ read_range_n(Session, TabName, StartKey, N) ->
 		  WriteKvps :: [kvp()]) ->
     ok | {error, Reason :: term()}.
 batch_write(Session, TabName, DeleteKeys, WriteKvps) ->
-    gen_server:call(Session, {batch_write, TabName, DeleteKeys, WriteKvps}, ?REQ_TIMEOUT).
+    pbpc_session:batch_write(Session, TabName, DeleteKeys, WriteKvps).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -236,7 +248,7 @@ batch_write(Session, TabName, DeleteKeys, WriteKvps) ->
     {ok, KVP :: kvp(), Ref :: pid()} |
     {error, Reason :: invalid | term()}.
 first(Session, TabName) ->
-    gen_server:call(Session, {first, TabName}, ?REQ_TIMEOUT).
+    pbpc_session:first(Session, TabName).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -248,7 +260,7 @@ first(Session, TabName) ->
     {ok, KVP :: kvp(), Ref :: pid()} |
     {error, Reason :: invalid | term()}.
 last(Session, TabName) ->
-    gen_server:call(Session, {last, TabName}, ?REQ_TIMEOUT).
+    pbpc_session:last(Session, TabName).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -261,7 +273,7 @@ last(Session, TabName) ->
     {ok, KVP :: kvp(), Ref :: pid()} |
     {error, Reason :: invalid | term()}.
 seek(Session, TabName, Key) ->
-    gen_server:call(Session, {seek, TabName, Key}, ?REQ_TIMEOUT).
+    pbpc_session:seek(Session, TabName, Key).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -274,7 +286,7 @@ seek(Session, TabName, Key) ->
     {ok, KVP :: kvp()} |
     {error, Reason :: invalid | term()}.
 next(Session, Ref) ->
-    gen_server:call(Session, {next, Ref}, ?REQ_TIMEOUT).
+    pbpc_session:next(Session, Ref).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -287,11 +299,10 @@ next(Session, Ref) ->
     {ok, KVP :: kvp()} |
     {error, Reason :: invalid | term()}.
 prev(Session, Ref) ->
-    gen_server:call(Session, {prev, Ref}, ?REQ_TIMEOUT).
+    pbpc_session:prev(Session, Ref).
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
 
 %% End of Module.

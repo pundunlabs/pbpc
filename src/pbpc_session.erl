@@ -29,6 +29,27 @@
 
 -export([start_link/1]).
 
+-export([connect/4,
+	 disconnect/1,
+	 create_table/4,
+	 delete_table/2,
+	 open_table/2,
+	 close_table/2,
+	 table_info/2,
+	 table_info/3,
+	 read/3,
+	 write/4,
+	 update/4,
+	 delete/3,
+	 read_range/4,
+	 read_range_n/4,
+	 batch_write/4,
+	 first/2,
+	 last/2,
+	 seek/3,
+	 next/2,
+	 prev/2]).
+
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
 %% ------------------------------------------------------------------
@@ -54,6 +75,7 @@
 		  from}).
 
 -define(TID_THRESHOLD, 65535).
+-define(REQ_TIMEOUT, 30000).
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -71,6 +93,285 @@ start_link(Args) ->
 
 %%--------------------------------------------------------------------
 %% @doc
+%% Connect to a pundun host at IP:Port with given Username and
+%% Password.
+%% @end
+%%--------------------------------------------------------------------
+-spec connect(IP :: string(),
+	      Port :: pos_integer(),
+	      Username :: string(),
+	      Password :: string()) ->
+    {ok, Session :: pid()} | {error, Reason :: term()}.
+connect(IP, Port, Username, Password) ->
+    ChildArgs = [{ip, IP}, {port, Port},
+		 {username, Username},
+		 {password, Password}],
+    case supervisor:start_child(pbpc_session_sup, [ChildArgs]) of
+	{ok, Pid} ->
+	    {ok, Pid};
+	{error, Reason} ->
+	    {error, Reason}
+    end.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Disconnect from pundun host by providing Session handler pid.
+%% @end
+%%--------------------------------------------------------------------
+-spec disconnect(Session :: pid()) ->
+    ok.
+disconnect(Session) ->
+    gen_server:cast(Session, disconnect).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Create table on pundun nodes/cluster.
+%% @end
+%%--------------------------------------------------------------------
+-spec create_table(Session :: pid(), TabName :: string(),
+		   KeyDef :: [atom()], Options :: [table_option()])->
+    ok | {error, Reason :: term()}.
+create_table(Session, TabName, KeyDef, Options) ->
+    Data = gen_server:call(Session, {create_table, TabName, KeyDef, Options}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Delete table from pundun nodes/cluster.
+%% @end
+%%--------------------------------------------------------------------
+-spec delete_table(Session :: pid(), TabName :: string())->
+    ok | {error, Reason :: term()}.
+delete_table(Session, TabName) ->
+    Data = gen_server:call(Session, {delete_table, TabName}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Open table a pundun table.
+%% @end
+%%--------------------------------------------------------------------
+-spec open_table(Session :: pid(), TabName :: string())->
+    ok | {error, Reason :: term()}.
+open_table(Session, TabName) ->
+    Data = gen_server:call(Session, {open_table, TabName}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Close a pundun table.
+%% @end
+%%--------------------------------------------------------------------
+-spec close_table(Session :: pid(), TabName :: string())->
+    ok | {error, Reason :: term()}.
+close_table(Session, TabName) ->
+    Data = gen_server:call(Session, {close_table, TabName}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get table information for all attributes.
+%% @end
+%%--------------------------------------------------------------------
+-spec table_info(Session :: pid(),
+		 TabName :: string()) ->
+    [{atom(), term()}] | {error, Reason :: term()}.
+table_info(Session, TabName) ->
+    Data = gen_server:call(Session, {table_info, TabName}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get table information with desired attributes.
+%% @end
+%%--------------------------------------------------------------------
+-spec table_info(Session :: pid(),
+		 TabName :: string(),
+		 Attributes :: [string()]) ->
+    [{atom(), term()}] | {error, Reason :: term()}.
+table_info(Session, TabName, Attributes) ->
+    Data = gen_server:call(Session, {table_info, TabName, Attributes}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Read Key from the table TabName.
+%% @end
+%%--------------------------------------------------------------------
+-spec read(Session :: pid(),
+	   TabName :: string(),
+	   Key :: key())->
+    {ok, value()} | {error, Reason :: term()}.
+read(Session, TabName, Key) ->
+    Data = gen_server:call(Session, {read, TabName, Key}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Write Key:Columns to the table TabName.
+%% @end
+%%--------------------------------------------------------------------
+-spec write(Session :: pid(),
+	    TabName :: string(),
+	    Key :: key(),
+	    Columns :: [column()])->
+    ok | {error, Reason :: term()}.
+write(Session, TabName, Key, Columns) ->
+    Data = gen_server:call(Session, {write, TabName, Key, Columns}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Update Key according to Op on the table TabName.
+%% field_name() :: string().
+%% treshold() :: pos_integer().
+%% setvalue() :: pos_integer().
+%% update_instruction() :: increment |
+%%                         {increment, treshold(), setvalue()} |
+%%                         overwrite.
+%% data() :: pos_integer() | term().
+%% default() :: pos_integer() | term().
+%% Op :: [{field_name(), instruction(), data()} |
+%%        {field_name(), instruction(), data(), default()}].
+%% @end
+%%--------------------------------------------------------------------
+-spec update(Session :: pid(),
+	     TabName :: string(),
+	     Key :: key(),
+	     Op :: [update_op()])->
+    {ok, value()} | {error, Reason :: term()}.
+update(Session, TabName, Key, Op) ->
+    Data = gen_server:call(Session, {update, TabName, Key, Op}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Delete Key from the table TabName.
+%% @end
+%%--------------------------------------------------------------------
+-spec delete(Session :: pid(),
+	     TabName :: string(),
+	     Key :: key())->
+    ok | {error, Reason :: term()}.
+delete(Session, TabName, Key) ->
+    Data = gen_server:call(Session, {delete, TabName, Key}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Read a Range of Keys from table with name Name and returns max
+%% Chunk items from each local shard of the table
+%% @end
+%%--------------------------------------------------------------------
+-spec read_range(Session :: pid(),
+		 TabName :: string(),
+		 KeyRange :: key_range(),
+		 Chunk :: pos_integer()) ->
+    {ok, [kvp()], Cont::complete | key()} | {error, Reason :: term()}.
+read_range(Session, TabName, KeyRange, Chunk) ->
+    Data = gen_server:call(Session, {read_range, TabName, KeyRange, Chunk}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Reads N nuber of Keys from table with name Name starting form
+%% StartKey.
+%% @end
+%%--------------------------------------------------------------------
+-spec read_range_n(Session :: pid(),
+		   TabName :: string(),
+		   StartKey :: key(),
+		   N :: pos_integer()) ->
+    {ok, [kvp()]} | {error, Reason :: term()}.
+read_range_n(Session, TabName, StartKey, N) ->
+    Data = gen_server:call(Session, {read_range_n, TabName, StartKey, N}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Batch Write deletes and writes a batch of keys and values from/to
+%% table in one operation.
+%% @end
+%%--------------------------------------------------------------------
+-spec batch_write(Session :: pid(),
+		  TabName :: string(),
+		  DeleteKeys :: [key()],
+		  WriteKvps :: [kvp()]) ->
+    ok | {error, Reason :: term()}.
+batch_write(Session, TabName, DeleteKeys, WriteKvps) ->
+    Data = gen_server:call(Session, {batch_write, TabName, DeleteKeys, WriteKvps}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get first key/value pair from the table TabName.
+%% @end
+%%--------------------------------------------------------------------
+-spec first(Session :: pid(),
+	    TabName :: string()) ->
+    {ok, KVP :: kvp(), Ref :: pid()} |
+    {error, Reason :: invalid | term()}.
+first(Session, TabName) ->
+    Data = gen_server:call(Session, {first, TabName}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get last key/value pair from the table TabName.
+%% @end
+%%--------------------------------------------------------------------
+-spec last(Session :: pid(),
+	   TabName :: string()) ->
+    {ok, KVP :: kvp(), Ref :: pid()} |
+    {error, Reason :: invalid | term()}.
+last(Session, TabName) ->
+    Data = gen_server:call(Session, {last, TabName}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get the sought Key/Value from table that is specified by TabName.
+%% @end
+%%--------------------------------------------------------------------
+-spec seek(Session :: pid(),
+	   TabName :: string(),
+	   Key :: key()) ->
+    {ok, KVP :: kvp(), Ref :: pid()} |
+    {error, Reason :: invalid | term()}.
+seek(Session, TabName, Key) ->
+    Data = gen_server:call(Session, {seek, TabName, Key}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get the next Key/Value from table that is specified by iterator
+%% reference Ref.
+%% @end
+%%--------------------------------------------------------------------
+-spec next(Session :: pid(),
+	   Ref :: pid()) ->
+    {ok, KVP :: kvp()} |
+    {error, Reason :: invalid | term()}.
+next(Session, Ref) ->
+    Data = gen_server:call(Session, {next, Ref}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Get the prevoius Key/Value from table that is specified by iterator
+%% reference Ref.
+%% @end
+%%--------------------------------------------------------------------
+-spec prev(Session :: pid(),
+	   Ref :: pid()) ->
+    {ok, KVP :: kvp()} |
+    {error, Reason :: invalid | term()}.
+prev(Session, Ref) ->
+    Data = gen_server:call(Session, {prev, Ref}, ?REQ_TIMEOUT),
+    decode(Data).
+
+%%--------------------------------------------------------------------
+%% @doc
 %% Handle the received response messages.
 %% @end
 %%--------------------------------------------------------------------
@@ -79,13 +380,11 @@ start_link(Args) ->
 			    TransactionRegister :: pid())->
     ok.
 handle_incomming_data(CorrID, Data, TransactionRegister) ->
-    {ok, PDU = #'APOLLO-PDU'{transactionId = Tid}} = pbpc_lib:decode(Data),
-    ?debug("Decoded PDU: ~p", [PDU]),
-    case lookup_request(TransactionRegister, Tid) of
-	{ok, Req = #request{from = Client}} ->
-	    Response = get_return_value(PDU),
-	    gen_server:reply(Client, Response),
-	    unregister_request(TransactionRegister, Req);
+    case lookup_request(TransactionRegister, CorrID) of
+	{ok, Client} ->
+	    gen_server:reply(Client, Data),
+	    true = ets:delete(TransactionRegister, CorrID),
+	    ok;
 	{error, not_found} ->
 	    ?debug("No Pid found to reply..", []),
 	    ok
@@ -102,10 +401,10 @@ init(Args) ->
     Port = proplists:get_value(port, Args),
     Username = proplists:get_value(username, Args),
     Password = proplists:get_value(password, Args),
-    case connect(IP, Port, Username, Password) of
+    case connect_(IP, Port, Username, Password) of
 	{ok, Socket} ->
 	    ssl:setopts(Socket, [{packet, 4}]),
-	    TR = ets:new(transaction_register, [set, public, {keypos, 2}]),
+	    TR = ets:new(transaction_register, [set, public, {keypos, 1}]),
 	    Counter = ets:new(counter, [set, protected]),
 	    ets:insert(Counter, {transaction_id, ?TID_THRESHOLD}),
 	    {ok, #state{socket = Socket,
@@ -130,12 +429,9 @@ init(Args) ->
     {noreply, State, Timeout} |
     {stop, Reason, Reply, State} |
     {stop, Reason, State}.
-handle_call({create_table, TableName, KeyDef, ColumnsDef,
-	    IndexesDef, Options}, From, State) ->
+handle_call({create_table, TableName, KeyDef, Options}, From, State) ->
     P = #'CreateTable'{tableName = TableName,
 		       keys = KeyDef,
-		       columns = ColumnsDef,
-		       indexes = IndexesDef,
 		       tableOptions = make_set_of_table_option(Options)},
     send_request({createTable, P}, From, State);
 handle_call({delete_table, TableName}, From, State) ->
@@ -163,6 +459,11 @@ handle_call({write, TableName, Key, Columns}, From, State) ->
 		 key = make_seq_of_fields(Key),
 		 columns = make_seq_of_fields(Columns)},
     send_request({write, P}, From, State);
+handle_call({update, TableName, Key, Op}, From, State) ->
+    P = #'Update'{tableName = TableName,
+		  key = make_seq_of_fields(Key),
+		  updateOperations = make_update_operations(Op)},
+    send_request({update, P}, From, State);
 handle_call({delete, TableName, Key}, From, State) ->
     P = #'Delete'{tableName = TableName,
 		  key = make_seq_of_fields(Key)},
@@ -217,12 +518,6 @@ handle_cast(disconnect, State = #state{socket = Socket}) ->
     ?debug("Closing socket: ~p", [Socket]),
     ok = ssl:close(Socket),
     {stop, normal, State};
-handle_cast({reply, Req = #request{from = Reply}, PDU},
-	    State = #state{transaction_register = TR}) ->
-    ?debug("Reply ~p", [PDU]),
-    gen_server:reply(Reply, PDU),
-    unregister_request(TR, Req),
-    {noreply, State};
 handle_cast(_Msg, State) ->
     ?debug("Unhandled cast message received: ~p", [_Msg]),
     {noreply, State}.
@@ -270,21 +565,21 @@ send_request(Procedure, From,
     {Tid, PDU} = get_pdu(Counter, Procedure),
     ?debug("Encoding PDU: ~p", [PDU]),
     Bin = pbpc_lib:encode(PDU),
-    case send(Socket, Tid, Bin) of
+    CorrId = encode_unsigned_16(Tid),
+    case send(Socket, CorrId, Bin) of
 	ok ->
-	    ok = register_request(TR, PDU, From),
+	    true = ets:insert(TR, {CorrId, From}),
 	    {noreply, State};
 	{error, Reason} ->
 	    {reply, {error, Reason}, State}
     end.
 
 -spec send(Socket :: port(),
-	   Tid :: integer(),
+	   CorrId :: binary(),
 	   BinData :: term()) ->
     ok | {error, Reason :: term()}.
-send(Socket, Tid, {ok, Bin}) when is_binary(Bin) ->
-    CorrId = encode_unsigned_16(Tid),
-    case ssl:send(Socket, [CorrId,Bin]) of
+send(Socket, CorrId, {ok, Bin}) when is_binary(Bin) ->
+    case ssl:send(Socket, [CorrId, Bin]) of
 	ok ->
 	    ok;
 	{error, Reason} ->
@@ -301,12 +596,12 @@ encode_unsigned_16(Int) ->
 	<<B1,B2>> -> <<B1, B2>>
     end.
 
--spec connect(IP :: string(),
+-spec connect_(IP :: string(),
 	      Port :: pos_integer(),
 	      Username :: string(),
 	      Password :: string()) ->
     {ok, Socket :: port()} | {error, Reason :: term()}.
-connect(IP, Port, Username, Password) ->
+connect_(IP, Port, Username, Password) ->
     case ssl:connect(IP, Port, [{active,false}]) of
 	{ok, Socket} ->
 	    authenticate(Socket, Username, Password);
@@ -423,32 +718,15 @@ handle_server_error(ScramData) ->
 	    {error, Error}
     end.
 
--spec register_request(TR :: pid(),
-		       PDU :: #'APOLLO-PDU'{},
-		       From :: {Pid :: pid(), Tag :: term()}) ->
-    ok.
-register_request(TR, PDU = #'APOLLO-PDU'{transactionId = Tid}, From) ->
-    ets:insert(TR, #request{transactionId = Tid,
-			    pdu = PDU,
-			    from = From}),
-    ok.
-
--spec lookup_request(TR :: pid(), Tid :: integer()) ->
+-spec lookup_request(TR :: pid(), CorrID :: binary()) ->
     {ok, Req :: #request{}} | {error, not_found}.
-lookup_request(TR, Tid) ->
-    case ets:lookup(TR, Tid) of
-	[Req = #request{}] ->
-	    {ok, Req};
+lookup_request(TR, CorrId) ->
+    case ets:lookup(TR, CorrId) of
+	[{_, From}] ->
+	    {ok, From};
 	[] ->
 	    {error, not_found}
     end.
-
--spec unregister_request(TR :: pid(),
-			 Req :: #request{}) ->
-    ok.
-unregister_request(TR, Req) ->
-    ets:delete_object(TR, Req),
-    ok.
 
 -spec get_pdu(Counter :: integer(),
 	      Procedure :: {atom(), term()}) ->
@@ -468,6 +746,13 @@ get_version() ->
     Tid :: integer().
 get_transaction_id(Counter) ->
     ets:update_counter(Counter, transaction_id, {2, 1, ?TID_THRESHOLD, 0}).
+
+
+-spec decode(Data :: binary) ->
+    Response :: term().
+decode(Data)->
+    {ok, PDU} = pbpc_lib:decode(Data),
+    get_return_value(PDU).
 
 -spec get_return_value(PDU :: #'APOLLO-PDU'{}) ->
     Response :: term().
@@ -671,3 +956,36 @@ translate_options({type, ets_leveldb_wrapped}) ->
     {type, etsLeveldbWrapped};
 translate_options(Option) ->
     Option.
+
+-spec make_update_operations(Op :: update_op()) ->
+    [#'UpdateOperation'{}].
+make_update_operations(Op) ->
+    make_update_operations(Op, []).
+
+-spec make_update_operations(Op :: update_op(),
+			     Acc :: [#'UpdateOperation'{}]) ->
+    [#'UpdateOperation'{}].
+make_update_operations([{F, Inst, Data} | Rest], Acc) ->
+    UpOp = #'UpdateOperation'{field = F,
+			      updateInstruction = make_update_instruction(Inst),
+			      value = make_value(Data)},
+    make_update_operations(Rest, [UpOp | Acc]);
+make_update_operations([{F, Inst, Data, Default} | Rest], Acc) ->
+    UpOp = #'UpdateOperation'{field = F,
+			      updateInstruction = make_update_instruction(Inst),
+			      value = make_value(Data),
+			      defaultValue = make_value(Default)},
+    make_update_operations(Rest, [UpOp | Acc]);
+make_update_operations([], Acc) ->
+    lists:reverse(Acc).
+
+-spec make_update_instruction(Inst :: update_instruction()) ->
+    #'UpdateInstruction'{}.
+make_update_instruction(increment) ->
+    #'UpdateInstruction'{instruction = increment};
+make_update_instruction({increment, T, S}) ->
+    #'UpdateInstruction'{instruction = increment,
+			 treshold = T,
+			 setValue = S};
+make_update_instruction(overwrite) ->
+    #'UpdateInstruction'{instruction = overwrite}.
