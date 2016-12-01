@@ -41,7 +41,7 @@
 	 write/4,
 	 update/4,
 	 delete/3,
-	 read_range/4,
+	 read_range/5,
 	 read_range_n/4,
 	 batch_write/4,
 	 first/2,
@@ -63,14 +63,14 @@
 	 handle_incomming_data/3]).
 
 -include("pbpc.hrl").
--include("APOLLO-PDU-Descriptions.hrl").
+-include("apollo_pb.hrl").
 -include_lib("gb_log/include/gb_log.hrl").
 
 -record(state, {socket,
 		transaction_register,
 		counter}).
 
--record(request, {transactionId,
+-record(request, {transaction_id,
 		  pdu,
 		  from}).
 
@@ -265,11 +265,12 @@ delete(Session, TabName, Key) ->
 %%--------------------------------------------------------------------
 -spec read_range(Session :: pid(),
 		 TabName :: string(),
-		 KeyRange :: key_range(),
+		 StartKey :: key(),
+		 EndKey :: key(),
 		 Chunk :: pos_integer()) ->
     {ok, [kvp()], Cont::complete | key()} | {error, Reason :: term()}.
-read_range(Session, TabName, KeyRange, Chunk) ->
-    Data = gen_server:call(Session, {read_range, TabName, KeyRange, Chunk}, ?REQ_TIMEOUT),
+read_range(Session, TabName, StartKey, EndKey, Chunk) ->
+    Data = gen_server:call(Session, {read_range, TabName, StartKey, EndKey, Chunk}, ?REQ_TIMEOUT),
     decode(Data).
 
 %%--------------------------------------------------------------------
@@ -430,67 +431,68 @@ init(Args) ->
     {stop, Reason, Reply, State} |
     {stop, Reason, State}.
 handle_call({create_table, TableName, KeyDef, Options}, From, State) ->
-    P = #'CreateTable'{tableName = TableName,
+    P = #'CreateTable'{table_name = TableName,
 		       keys = KeyDef,
-		       tableOptions = make_set_of_table_option(Options)},
-    send_request({createTable, P}, From, State);
+		       table_options = make_set_of_table_option(Options)},
+    send_request({create_table, P}, From, State);
 handle_call({delete_table, TableName}, From, State) ->
-    P = #'DeleteTable'{tableName = TableName},
-    send_request({deleteTable, P}, From, State);
+    P = #'DeleteTable'{table_name = TableName},
+    send_request({delete_table, P}, From, State);
 handle_call({open_table, TableName}, From, State) ->
-    P = #'OpenTable'{tableName = TableName},
-    send_request({openTable, P}, From, State);
+    P = #'OpenTable'{table_name = TableName},
+    send_request({open_table, P}, From, State);
 handle_call({close_table, TableName}, From, State) ->
-    P = #'CloseTable'{tableName = TableName},
-    send_request({closeTable, P}, From, State);
-handle_call({table_inf, TableName}, From, State) ->
-    P = #'TableInfo'{tableName = TableName},
-    send_request({tableInfo, P}, From, State);
+    P = #'CloseTable'{table_name = TableName},
+    send_request({close_table, P}, From, State);
+handle_call({table_info, TableName}, From, State) ->
+    P = #'TableInfo'{table_name = TableName},
+    send_request({table_info, P}, From, State);
 handle_call({table_info, TableName, Attributes}, From, State) ->
-    P = #'TableInfo'{tableName = TableName,
+    P = #'TableInfo'{table_name = TableName,
 		     attributes = Attributes},
-    send_request({tableInfo, P}, From, State);
+    send_request({table_info, P}, From, State);
 handle_call({read, TableName, Key}, From, State) ->
-    P = #'Read'{tableName = TableName,
+    P = #'Read'{table_name = TableName,
 		key = make_seq_of_fields(Key)},
     send_request({read, P}, From, State);
 handle_call({write, TableName, Key, Columns}, From, State) ->
-    P = #'Write'{tableName = TableName,
+    P = #'Write'{table_name = TableName,
 		 key = make_seq_of_fields(Key),
 		 columns = make_seq_of_fields(Columns)},
     send_request({write, P}, From, State);
 handle_call({update, TableName, Key, Op}, From, State) ->
-    P = #'Update'{tableName = TableName,
+    P = #'Update'{table_name = TableName,
 		  key = make_seq_of_fields(Key),
-		  updateOperations = make_update_operations(Op)},
+		  update_operation = make_update_operations(Op)},
     send_request({update, P}, From, State);
 handle_call({delete, TableName, Key}, From, State) ->
-    P = #'Delete'{tableName = TableName,
+    P = #'Delete'{table_name = TableName,
 		  key = make_seq_of_fields(Key)},
     send_request({delete, P}, From, State);
-handle_call({read_range, TableName, KeyRange, Chunk}, From, State) ->
-    P = #'ReadRange'{tableName = TableName,
-		     keyRange = make_keyrange(KeyRange),
+handle_call({read_range, TableName, StartKey, EndKey, Chunk}, From, State) ->
+    P = #'ReadRange'{table_name = TableName,
+		     start_key = make_seq_of_fields(StartKey),
+		     end_key = make_seq_of_fields(EndKey),
 		     limit = Chunk},
-    send_request({readRange, P}, From, State);
+    send_request({read_range, P}, From, State);
 handle_call({read_range_n, TableName, StartKey, N}, From, State) ->
-    P = #'ReadRangeN'{tableName = TableName,
-		      startKey = make_seq_of_fields(StartKey),
+    P = #'ReadRangeN'{table_name = TableName,
+		      start_key = make_seq_of_fields(StartKey),
 		      n = N},
-    send_request({readRangeN, P}, From, State);
+    send_request({read_range_n, P}, From, State);
 handle_call({batch_write, TableName, DeleteKeys, WriteKvls}, From, State) ->
-    P = #'BatchWrite'{tableName = TableName,
-		      deleteKeys = make_keys(DeleteKeys),
-		      writeKvps = make_kvls(WriteKvls)},
-    send_request({batchWrite, P}, From, State);
+    P = #'BatchWrite'{table_name = TableName,
+		      delete_keys = make_keys(DeleteKeys),
+		      write_kvps = make_kvls(WriteKvls)},
+    send_request({batch_write, P}, From, State);
 handle_call({first, TableName}, From, State) ->
-    P = #'First'{tableName = TableName},
+    P = #'First'{table_name = TableName},
     send_request({first, P}, From, State);
 handle_call({last, TableName}, From, State) ->
-    P = #'Last'{tableName = TableName},
+    P = #'Last'{table_name = TableName},
     send_request({last, P}, From, State);
 handle_call({seek, TableName, Key}, From, State) ->
-    P = #'Seek'{tableName = TableName,
+    P = #'Seek'{table_name = TableName,
 		key = make_seq_of_fields(Key)},
     send_request({seek, P}, From, State);
 handle_call({next, It}, From, State) ->
@@ -535,7 +537,7 @@ handle_cast(_Msg, State) ->
 handle_info({ssl_closed, Port}, State) ->
     ?debug("ssl_closed: ~p, stopping..", [Port]),
     {stop, ssl_closed, State};
-handle_info({ssl, Socket, [B1,B2 | Data]}, State = #state{transaction_register = TR}) ->
+handle_info({ssl, Socket, <<B1,B2, Data/binary>>}, State = #state{transaction_register = TR}) ->
     ?debug("Received ssl data: ~p",[Data]),
     spawn_link(?MODULE, handle_incomming_data, [<<B1,B2>>, Data, TR]),
     ok = ssl:setopts(Socket, [{active, once}]),
@@ -564,7 +566,7 @@ send_request(Procedure, From,
 			    counter = Counter}) ->
     {Tid, PDU} = get_pdu(Counter, Procedure),
     ?debug("Encoding PDU: ~p", [PDU]),
-    Bin = pbpc_lib:encode(PDU),
+    Bin = apollo_pb:encode_msg(PDU),
     CorrId = encode_unsigned_16(Tid),
     case send(Socket, CorrId, Bin) of
 	ok ->
@@ -578,7 +580,7 @@ send_request(Procedure, From,
 	   CorrId :: binary(),
 	   BinData :: term()) ->
     ok | {error, Reason :: term()}.
-send(Socket, CorrId, {ok, Bin}) when is_binary(Bin) ->
+send(Socket, CorrId, Bin) when is_binary(Bin) ->
     case ssl:send(Socket, [CorrId, Bin]) of
 	ok ->
 	    ok;
@@ -676,14 +678,16 @@ authenticate(wait_server_first_message, Map) ->
 authenticate(wait_server_final_message, Map) ->
     receive
 	{ssl, Socket, Data} ->
-	    ok = ssl:setopts(Socket, [{active, once}]),
 	    ScramData = scramerl_lib:parse(Data),
-	    case maps:get(verifier, ScramData, undefined) of
-		undefined ->
-		    handle_server_error(ScramData);
-		Verifier ->
-		    verify_server_signature(Socket, Verifier, Map)
-	    end
+	    Result =
+		case maps:get(verifier, ScramData, undefined) of
+		    undefined ->
+			handle_server_error(ScramData);
+		    Verifier ->
+			verify_server_signature(Socket, Verifier, Map)
+		end,
+	    ok = ssl:setopts(Socket, [{active, once}]),
+	    Result
     after
 	5000 ->
 	    {error, timeout}
@@ -696,11 +700,12 @@ authenticate(wait_server_final_message, Map) ->
 verify_server_signature(Socket, Verifier, Map) ->
     SaltedPassword = maps:get(salted_password, Map),
     AuthMessage = maps:get(auth_message, Map),
-    io:format("SaltedPassword: ~p~n",[SaltedPassword]),
-    io:format("AuthMessage: ~p~n",[AuthMessage]),
-    io:format("Verifier: ~p~n",[Verifier]),
+    ?debug("SaltedPassword: ~p~n", [SaltedPassword]),
+    ?debug("AuthMessage: ~p~n", [AuthMessage]),
+    ?debug("Verifier: ~p~n", [Verifier]),
     case scramerl:server_signature(SaltedPassword, AuthMessage) of
 	Verifier ->
+	    ok = ssl:setopts(Socket, [{mode, binary}]),
 	    {ok, Socket};
 	Else ->
 	    io:format("ServerSignature: ~p ~n",[Else]),
@@ -730,12 +735,12 @@ lookup_request(TR, CorrId) ->
 
 -spec get_pdu(Counter :: integer(),
 	      Procedure :: {atom(), term()}) ->
-    {integer(), #'APOLLO-PDU'{}}.
+    {integer(), #'ApolloPdu'{}}.
 get_pdu(Counter, Procedure) ->
     Tid = get_transaction_id(Counter),
-    {Tid, #'APOLLO-PDU'{version = get_version(),
-			transactionId = Tid,
-			procedure = Procedure}}.
+    {Tid, #'ApolloPdu'{version = get_version(),
+		       transaction_id = Tid,
+		       procedure = Procedure}}.
 
 -spec get_version() ->
     #'Version'{}.
@@ -751,65 +756,65 @@ get_transaction_id(Counter) ->
 -spec decode(Data :: binary) ->
     Response :: term().
 decode(Data)->
-    {ok, PDU} = pbpc_lib:decode(Data),
+    PDU = apollo_pb:decode_msg(Data, 'ApolloPdu'),
     get_return_value(PDU).
 
--spec get_return_value(PDU :: #'APOLLO-PDU'{}) ->
+-spec get_return_value(PDU :: #'ApolloPdu'{}) ->
     Response :: term().
-get_return_value(#'APOLLO-PDU'{procedure =
-		    {response, #'Response'{result = asn1_NOVALUE}}}) ->
+get_return_value(#'ApolloPdu'{procedure =
+		    {response, #'Response'{result = {ok, "ok"}}}}) ->
     ok;
-get_return_value(#'APOLLO-PDU'{procedure =
+get_return_value(#'ApolloPdu'{procedure =
 		    {response, #'Response'{result = {columns, Columns}}}}) ->
     {ok, strip_fields(Columns)};
-get_return_value(#'APOLLO-PDU'{procedure =
+get_return_value(#'ApolloPdu'{procedure =
 		    {response, #'Response'{result =
-			{keyColumnsPair,
+			{key_columns_pair,
 			    #'KeyColumnsPair'{key = Key,
 					      columns = Columns}}}}}) ->
     {ok, {strip_fields(Key), strip_fields(Columns)}};
-get_return_value(#'APOLLO-PDU'{procedure =
+get_return_value(#'ApolloPdu'{procedure =
 		    {response, #'Response'{result =
-			{keyColumnsList,
+			{key_columns_list,
 			    #'KeyColumnsList'{list = List,
 					      continuation = Cont}}}}}) ->
     Kcl = [begin
 	    {strip_fields(K), strip_fields(C)}
 	   end || #'KeyColumnsPair'{key = K, columns = C} <- List],
     case Cont of
-	asn1_NOVALUE ->
+	undefined ->
 	    {ok, Kcl};
 	#'Continuation'{complete = true} ->
 	    {ok, Kcl, complete};
 	#'Continuation'{complete = false, key = Key} ->
 	    {ok, Kcl, strip_fields(Key)}
     end;
-get_return_value(#'APOLLO-PDU'{procedure =
+get_return_value(#'ApolloPdu'{procedure =
 		    {response, #'Response'{result =
-			{propList, Proplist}}}}) ->
+			{proplist, Proplist}}}}) ->
     Result = strip_fields(Proplist),
     {ok, Result};
-get_return_value(#'APOLLO-PDU'{procedure =
+get_return_value(#'ApolloPdu'{procedure =
 		    {response, #'Response'{result =
-			{kcpIt, #'KcpIt'{keyColumnsPair =
+			{kcp_it, #'KcpIt'{key_columns_pair =
 					    #'KeyColumnsPair'{key = K,
 							      columns = V},
 					 it = It}}}}}) ->
     {ok, {strip_fields(K), strip_fields(V)}, It};
-get_return_value(#'APOLLO-PDU'{procedure =
+get_return_value(#'ApolloPdu'{procedure =
 		    {error, #'Error'{cause = Cause}}}) ->
     {error, Cause}.
 
 -type pbp_table_option() :: {type, type()} |
-			    {dataModel, data_model()} |
+			    {data_model, data_model()} |
 			    {wrapper, #'Wrapper'{}} |
-			    {memWrapper, #'Wrapper'{}} |
+			    {mem_wrapper, #'Wrapper'{}} |
 			    {comparator, comparator()} |
-			    {timeSeries, boolean()} |
+			    {time_series, boolean()} |
 			    {shards, integer()} |
 			    {distributed, boolean()} |
-			    {replicationFactor, integer()} |
-			    {hashExclude, [string()]}.
+			    {replication_factor, integer()} |
+			    {hash_exclude, [string()]}.
 
 -spec make_set_of_table_option(Options :: [table_option()]) ->
     [pbp_table_option()].
@@ -824,29 +829,29 @@ make_set_of_table_option([], Acc) ->
 make_set_of_table_option([{type, T}|Rest], Acc) ->
     make_set_of_table_option(Rest, [translate_options({type, T}) | Acc]);
 make_set_of_table_option([{data_model, DT}|Rest], Acc) ->
-    make_set_of_table_option(Rest, [{dataModel, DT} | Acc]);
+    make_set_of_table_option(Rest, [{data_model, DT} | Acc]);
 make_set_of_table_option([{wrapper, {NB, TM, SM}}|Rest], Acc) ->
-    Wrapper = #'Wrapper'{numOfBuckets = NB,
-			 timeMargin = asn1_optional(TM),
-			 sizeMargin = asn1_optional(SM)},
+    Wrapper = #'Wrapper'{num_of_buckets = NB,
+			 time_margin = TM,
+			 size_margin = SM},
     make_set_of_table_option(Rest, [{wrapper, Wrapper} | Acc]);
 make_set_of_table_option([{mem_wrapper, {NB, TM, SM}}|Rest], Acc) ->
-    Wrapper = #'Wrapper'{numOfBuckets = NB,
-			 timeMargin = asn1_optional(TM),
-			 sizeMargin = asn1_optional(SM)},
-    make_set_of_table_option(Rest, [{memWrapper, Wrapper} | Acc]);
+    Wrapper = #'Wrapper'{num_of_buckets = NB,
+			 time_margin = TM,
+			 size_margin = SM},
+    make_set_of_table_option(Rest, [{mem_wrapper, Wrapper} | Acc]);
 make_set_of_table_option([{comparator, C}|Rest], Acc) ->
     make_set_of_table_option(Rest, [{comparator, C} | Acc]);
 make_set_of_table_option([{time_series, T}|Rest], Acc) ->
-    make_set_of_table_option(Rest, [{timeSeries, T} | Acc]);
+    make_set_of_table_option(Rest, [{time_series, T} | Acc]);
 make_set_of_table_option([{shards, S}|Rest], Acc) ->
     make_set_of_table_option(Rest, [{shards, S} | Acc]);
 make_set_of_table_option([{distributed, D}|Rest], Acc) ->
     make_set_of_table_option(Rest, [{distributed, D} | Acc]);
 make_set_of_table_option([{replication_factor, RF}|Rest], Acc) ->
-    make_set_of_table_option(Rest, [{replicationFactor, RF} | Acc]);
+    make_set_of_table_option(Rest, [{replication_factor, RF} | Acc]);
 make_set_of_table_option([{hash_exclude, HE}|Rest], Acc) ->
-    make_set_of_table_option(Rest, [{hashExclude, HE} | Acc]);
+    make_set_of_table_option(Rest, [{hash_exclude, HE} | Acc]);
 make_set_of_table_option([_Else|Rest], Acc) ->
     ?debug("Unknown table option: ~p", [_Else]),
     make_set_of_table_option(Rest, Acc).
@@ -873,29 +878,35 @@ make_value(V) when is_binary(V) ->
 make_value(V) when is_integer(V) ->
     {int, V};
 make_value(V) when is_float(V) ->
-    {real, <<V:64/float>>};
+    {double, V};
 make_value(true) ->
-    {bool, true};
+    {boolean, true};
 make_value(false) ->
-    {bool, false};
+    {boolean, false};
 make_value(V) when is_list(V) ->
-    case io_lib:printable_unicode_list(V) of
-	true ->
-	    {string, V};
+    case is_list_of_printables(V) of
+	{true, L} ->
+	    {string, L};
 	false ->
-	    ok%%{binary, list_to_binary(V)}
+	    {binary, list_to_binary(V)}
     end;
 make_value(undefined) ->
-    {null, 'NULL'}.
+    {null, 'NULL'};
+make_value(A) when is_atom(A) ->
+    {string, atom_to_list(A)};
+make_value(T) when is_tuple(T) ->
+    {binary, term_to_binary(T)}.
 
--spec make_keyrange(KeyRange :: {[{string(), term()}], [{string(), term()}]}) ->
-    #'KeyRange'{}.
-make_keyrange({Start, End}) ->
-    #'KeyRange'{start = make_seq_of_fields(Start),
-		'end' = make_seq_of_fields(End)};
-make_keyrange(Else) ->
-    ?debug("Invalid key range: ~p",[Else]),
-    Else.
+is_list_of_printables(L) ->
+    case io_lib:printable_unicode_list(L) of
+        true -> {true, L};
+	false ->
+	    case io_lib:printable_unicode_list(lists:flatten(L)) of
+		true ->
+		    {true, lists:flatten([E++" "||E <- L])};
+		false -> false
+	    end
+    end.
 
 -spec make_keys(Keys :: [[{string(), term()}]]) ->
     [[#'Field'{}]].
@@ -915,36 +926,29 @@ make_kvls(Else) ->
     ?debug("Invalid key/columns tuple list: ~p",[Else]),
     Else.
 
--spec strip_fields(Fields :: [#'Field'{}]) ->
+-spec strip_fields(Fields :: [#'Field'{}] | #'Fields'{}) ->
     [{string(), term()}].
+strip_fields(#'Fields'{fields = Fields}) ->
+    strip_fields(Fields, []);
 strip_fields(Fields) ->
     strip_fields(Fields, []).
 
 -spec strip_fields(Fields :: [#'Field'{}],
 		   Acc :: [{string(), term()}]) ->
     [{string(), term()}].
-strip_fields([], Acc) ->
-    lists:reverse(Acc);
-strip_fields([#'Field'{name = N, value = {string, Str}} | Rest], Acc) ->
-    strip_fields(Rest, [{N, binary_to_list(Str)} | Acc]);
-strip_fields([#'Field'{name = N, value = {double, Bin}} | Rest], Acc) ->
-    <<D:64/float>> = Bin,
-    strip_fields(Rest, [{N, D} | Acc]);
+strip_fields([#'Field'{name = N, value = {boolean, B}} | Rest], Acc) ->
+    Bool = case B of
+	    0 -> false;
+	    1 -> true;
+	    B -> B
+	   end,
+    strip_fields(Rest, [{N, Bool} | Acc]);
 strip_fields([#'Field'{name = N, value = {null, _}} | Rest], Acc) ->
     strip_fields(Rest, [{N, undefined} | Acc]);
-strip_fields([#'Field'{name = N, value = {_,V}} | Rest], Acc) ->
-    strip_fields(Rest, [{N, V} | Acc]).
-
--spec asn1_optional(A :: undefined |
-			 asn1_NOVALUE |
-			 term()) ->
-    A :: term() | asn1_NOVALUE | undefined.
-asn1_optional(undefined) ->
-    asn1_NOVALUE;
-asn1_optional(asn1_NOVALUE) ->
-    undefined;
-asn1_optional(A) ->
-    A.
+strip_fields([#'Field'{name = N, value = {_, V}} | Rest], Acc) ->
+    strip_fields(Rest, [{N, V} | Acc]);
+strip_fields([], Acc) ->
+    lists:reverse(Acc).
 
 -spec translate_options(Option :: table_option()) ->
     PBP_Option :: pbp_table_option().
@@ -967,14 +971,14 @@ make_update_operations(Op) ->
     [#'UpdateOperation'{}].
 make_update_operations([{F, Inst, Data} | Rest], Acc) ->
     UpOp = #'UpdateOperation'{field = F,
-			      updateInstruction = make_update_instruction(Inst),
-			      value = make_value(Data)},
+			      update_instruction = make_update_instruction(Inst),
+			      value = #'Value'{value=make_value(Data)}},
     make_update_operations(Rest, [UpOp | Acc]);
 make_update_operations([{F, Inst, Data, Default} | Rest], Acc) ->
     UpOp = #'UpdateOperation'{field = F,
-			      updateInstruction = make_update_instruction(Inst),
-			      value = make_value(Data),
-			      defaultValue = make_value(Default)},
+			      update_instruction = make_update_instruction(Inst),
+			      value = #'Value'{value=make_value(Data)},
+			      default_value = #'Value'{value=make_value(Default)}},
     make_update_operations(Rest, [UpOp | Acc]);
 make_update_operations([], Acc) ->
     lists:reverse(Acc).
@@ -982,10 +986,14 @@ make_update_operations([], Acc) ->
 -spec make_update_instruction(Inst :: update_instruction()) ->
     #'UpdateInstruction'{}.
 make_update_instruction(increment) ->
-    #'UpdateInstruction'{instruction = increment};
+    #'UpdateInstruction'{instruction = 'INCREMENT',
+			 treshold = <<>>,
+			 set_value = <<>>};
 make_update_instruction({increment, T, S}) ->
-    #'UpdateInstruction'{instruction = increment,
-			 treshold = T,
-			 setValue = S};
+    #'UpdateInstruction'{instruction = 'INCREMENT',
+			 treshold = binary:encode_unsigned(T, big),
+			 set_value = binary:encode_unsigned(S, big)};
 make_update_instruction(overwrite) ->
-    #'UpdateInstruction'{instruction = overwrite}.
+    #'UpdateInstruction'{instruction = 'OVERWRITE',
+			 treshold = <<>>,
+			 set_value = <<>>}.

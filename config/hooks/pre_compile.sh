@@ -15,9 +15,6 @@ fi
 
 cd $REBAR_ROOT_DIR
 
-# Compile asn1 and output .erl and .hrl artifacts to src folder
-erlc -o ./src/ $REBAR_DEPS_DIR/$LOCALREPO/*.asn1
-
 # Create a symbolic link for the folder that includes proto files
 MY_PROTO_LINK=config/proto
 if [ -L $MY_PROTO_LINK ]; then

@@ -12,11 +12,6 @@ doc
 #common test
 test/logs
 
-#ASN1 Generated files
-src/APOLLO-PDU-Descriptions.asn1db
-src/APOLLO-PDU-Descriptions.erl
-src/APOLLO-PDU-Descriptions.hrl
-
 # ignore sasl_log
 sasl_log
 
@@ -53,4 +48,3 @@ rebar.lock
 include/apollo_pb.hrl
 include/gpb
 src/apollo_pb.erl
-

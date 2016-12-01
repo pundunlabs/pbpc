@@ -33,7 +33,7 @@
 	 write/4,
 	 update/4,
 	 delete/3,
-	 read_range/4,
+	 read_range/5,
 	 read_range_n/4,
 	 batch_write/4,
 	 first/2,
@@ -204,11 +204,12 @@ delete(Session, TabName, Key) ->
 %%--------------------------------------------------------------------
 -spec read_range(Session :: pid(),
 		 TabName :: string(),
-		 KeyRange :: key_range(),
+		 StartKey :: key(),
+		 EndKey :: key(),
 		 Chunk :: pos_integer()) ->
     {ok, [kvp()], Cont::complete | key()} | {error, Reason :: term()}.
-read_range(Session, TabName, KeyRange, Chunk) ->
-    pbpc_session:read_range(Session, TabName, KeyRange, Chunk).
+read_range(Session, TabName, StartKey, EndKey, Chunk) ->
+    pbpc_session:read_range(Session, TabName, StartKey, EndKey, Chunk).
 
 %%--------------------------------------------------------------------
 %% @doc
