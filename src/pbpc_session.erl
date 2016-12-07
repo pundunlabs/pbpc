@@ -68,7 +68,8 @@
 
 -record(state, {socket,
 		transaction_register,
-		counter}).
+		counter,
+		monitor_ref}).
 
 -record(request, {transaction_id,
 		  pdu,
@@ -103,7 +104,8 @@ start_link(Args) ->
 	      Password :: string()) ->
     {ok, Session :: pid()} | {error, Reason :: term()}.
 connect(IP, Port, Username, Password) ->
-    ChildArgs = [{ip, IP}, {port, Port},
+    ChildArgs = [{pid, self()},
+		 {ip, IP}, {port, Port},
 		 {username, Username},
 		 {password, Password}],
     case supervisor:start_child(pbpc_session_sup, [ChildArgs]) of
@@ -398,6 +400,8 @@ handle_incomming_data(CorrID, Data, TransactionRegister) ->
 -spec init(Args :: [{atom(), term()}]) ->
     {ok, State :: #state{}} | {stop, Reason :: term()}.
 init(Args) ->
+    Pid = proplists:get_value(pid, Args),
+    MonitorRef = erlang:monitor(process, Pid),
     IP = proplists:get_value(ip, Args),
     Port = proplists:get_value(port, Args),
     Username = proplists:get_value(username, Args),
@@ -410,7 +414,8 @@ init(Args) ->
 	    ets:insert(Counter, {transaction_id, ?TID_THRESHOLD}),
 	    {ok, #state{socket = Socket,
 			transaction_register = TR,
-			counter = Counter}};
+			counter = Counter,
+			monitor_ref = MonitorRef}};
 	{error, _Reason} ->
 	    {stop, normal}
     end.
@@ -537,16 +542,22 @@ handle_cast(_Msg, State) ->
 handle_info({ssl_closed, Port}, State) ->
     ?debug("ssl_closed: ~p, stopping..", [Port]),
     {stop, ssl_closed, State};
-handle_info({ssl, Socket, <<B1,B2, Data/binary>>}, State = #state{transaction_register = TR}) ->
+handle_info({ssl, Socket, <<B1,B2, Data/binary>>},
+	    State = #state{transaction_register = TR}) ->
     ?debug("Received ssl data: ~p",[Data]),
-    spawn_link(?MODULE, handle_incomming_data, [<<B1,B2>>, Data, TR]),
+    spawn(?MODULE, handle_incomming_data, [<<B1,B2>>, Data, TR]),
     ok = ssl:setopts(Socket, [{active, once}]),
     {noreply, State};
+handle_info({'DOWN', Ref, process, _Pid, Reason},
+	    State = #state{monitor_ref = Ref}) ->
+    ?debug("Stopping after socket owner process is 'DOWN', ~p", [Reason]),
+    {stop, normal, State};
 handle_info(_Info, State) ->
     ?debug("Unhandled info received: ~p", [_Info]),
     {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+    erlang:demonitor(State#state.monitor_ref),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -629,7 +640,6 @@ authenticate(init, Map) ->
     ClientFirstMsgBare = scramerl:client_first_message_bare(Username),
     Gs2Header = scramerl:gs2_header(),
     ClientFirstMsg = Gs2Header ++ ClientFirstMsgBare,
-    io:format("Pid: ~p~n",[self()]),
     case ssl:send(Socket, ClientFirstMsg) of
 	ok ->
 	    ok = ssl:setopts(Socket, [{active, once}]),
@@ -656,8 +666,8 @@ authenticate(wait_server_first_message, Map) ->
 			  CFMWoP,
 	    
 	    SaltedPassword = scramerl_lib:hi(Normalized, Salt, IterCount),
-	    io:format("SaltedPassword: ~p~n",[SaltedPassword]),
-	    io:format("AuthMessage: ~p~n",[AuthMessage]),
+	    ?debug("SaltedPassword: ~p~n",[SaltedPassword]),
+	    ?debug("AuthMessage: ~p~n",[AuthMessage]),
 	    ClientFinalMsg = scramerl:client_final_message(Nonce,
 							   SaltedPassword,
 							   AuthMessage),
@@ -672,7 +682,7 @@ authenticate(wait_server_first_message, Map) ->
 	    end
     after
 	5000 ->
-	    io:format("timeout at wait_server_first_message~n", []),
+	    ?debug("timeout at wait_server_first_message~n", []),
 	    {error, timeout}
     end;
 authenticate(wait_server_final_message, Map) ->
@@ -708,7 +718,7 @@ verify_server_signature(Socket, Verifier, Map) ->
 	    ok = ssl:setopts(Socket, [{mode, binary}]),
 	    {ok, Socket};
 	Else ->
-	    io:format("ServerSignature: ~p ~n",[Else]),
+	    ?debug("ServerSignature: ~p ~n",[Else]),
 	    {error, server_verification}
     end.
 
@@ -719,7 +729,7 @@ handle_server_error(ScramData) ->
 	undefined ->
 	    {error, server_verification};
 	Error ->
-	    io:format("Server Error: ~p~n",[Error]),
+	    ?debug("Server Error: ~p~n",[Error]),
 	    {error, Error}
     end.
 
