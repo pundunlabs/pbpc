@@ -66,11 +66,6 @@
 -include("apollo_pb.hrl").
 -include_lib("gb_log/include/gb_log.hrl").
 
--record(state, {socket,
-		transaction_register,
-		counter,
-		monitor_ref}).
-
 -record(request, {transaction_id,
 		  pdu,
 		  from}).
@@ -134,8 +129,10 @@ disconnect(Session) ->
 		   KeyDef :: [atom()], Options :: [table_option()])->
     ok | {error, Reason :: term()}.
 create_table(Session, TabName, KeyDef, Options) ->
-    Data = gen_server:call(Session, {create_table, TabName, KeyDef, Options}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'CreateTable'{table_name = TabName,
+		       keys = KeyDef,
+		       table_options = make_set_of_table_option(Options)},
+    transaction(Session, {create_table, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -145,8 +142,8 @@ create_table(Session, TabName, KeyDef, Options) ->
 -spec delete_table(Session :: pid(), TabName :: string())->
     ok | {error, Reason :: term()}.
 delete_table(Session, TabName) ->
-    Data = gen_server:call(Session, {delete_table, TabName}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'DeleteTable'{table_name = TabName},
+    transaction(Session, {delete_table, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -156,8 +153,8 @@ delete_table(Session, TabName) ->
 -spec open_table(Session :: pid(), TabName :: string())->
     ok | {error, Reason :: term()}.
 open_table(Session, TabName) ->
-    Data = gen_server:call(Session, {open_table, TabName}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'OpenTable'{table_name = TabName},
+    transaction(Session, {open_table, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -167,8 +164,8 @@ open_table(Session, TabName) ->
 -spec close_table(Session :: pid(), TabName :: string())->
     ok | {error, Reason :: term()}.
 close_table(Session, TabName) ->
-    Data = gen_server:call(Session, {close_table, TabName}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'CloseTable'{table_name = TabName},
+    transaction(Session, {close_table, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -179,8 +176,8 @@ close_table(Session, TabName) ->
 		 TabName :: string()) ->
     [{atom(), term()}] | {error, Reason :: term()}.
 table_info(Session, TabName) ->
-    Data = gen_server:call(Session, {table_info, TabName}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'TableInfo'{table_name = TabName},
+    transaction(Session, {table_info, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -192,8 +189,9 @@ table_info(Session, TabName) ->
 		 Attributes :: [string()]) ->
     [{atom(), term()}] | {error, Reason :: term()}.
 table_info(Session, TabName, Attributes) ->
-    Data = gen_server:call(Session, {table_info, TabName, Attributes}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'TableInfo'{table_name = TabName,
+		     attributes = Attributes},
+    transaction(Session, {table_info, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -205,8 +203,9 @@ table_info(Session, TabName, Attributes) ->
 	   Key :: key())->
     {ok, value()} | {error, Reason :: term()}.
 read(Session, TabName, Key) ->
-    Data = gen_server:call(Session, {read, TabName, Key}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'Read'{table_name = TabName,
+		key = make_seq_of_fields(Key)},
+    transaction(Session, {read, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -219,8 +218,10 @@ read(Session, TabName, Key) ->
 	    Columns :: [column()])->
     ok | {error, Reason :: term()}.
 write(Session, TabName, Key, Columns) ->
-    Data = gen_server:call(Session, {write, TabName, Key, Columns}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'Write'{table_name = TabName,
+		 key = make_seq_of_fields(Key),
+		 columns = make_seq_of_fields(Columns)},
+    transaction(Session, {write, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -243,8 +244,10 @@ write(Session, TabName, Key, Columns) ->
 	     Op :: [update_op()])->
     {ok, value()} | {error, Reason :: term()}.
 update(Session, TabName, Key, Op) ->
-    Data = gen_server:call(Session, {update, TabName, Key, Op}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'Update'{table_name = TabName,
+		  key = make_seq_of_fields(Key),
+		  update_operation = make_update_operations(Op)},
+    transaction(Session, {update, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -256,8 +259,9 @@ update(Session, TabName, Key, Op) ->
 	     Key :: key())->
     ok | {error, Reason :: term()}.
 delete(Session, TabName, Key) ->
-    Data = gen_server:call(Session, {delete, TabName, Key}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'Delete'{table_name = TabName,
+		  key = make_seq_of_fields(Key)},
+    transaction(Session, {delete, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -272,8 +276,11 @@ delete(Session, TabName, Key) ->
 		 Chunk :: pos_integer()) ->
     {ok, [kvp()], Cont::complete | key()} | {error, Reason :: term()}.
 read_range(Session, TabName, StartKey, EndKey, Chunk) ->
-    Data = gen_server:call(Session, {read_range, TabName, StartKey, EndKey, Chunk}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'ReadRange'{table_name = TabName,
+		     start_key = make_seq_of_fields(StartKey),
+		     end_key = make_seq_of_fields(EndKey),
+		     limit = Chunk},
+    transaction(Session, {read_range, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -287,8 +294,10 @@ read_range(Session, TabName, StartKey, EndKey, Chunk) ->
 		   N :: pos_integer()) ->
     {ok, [kvp()]} | {error, Reason :: term()}.
 read_range_n(Session, TabName, StartKey, N) ->
-    Data = gen_server:call(Session, {read_range_n, TabName, StartKey, N}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'ReadRangeN'{table_name = TabName,
+		      start_key = make_seq_of_fields(StartKey),
+		      n = N},
+    transaction(Session, {read_range_n, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -302,8 +311,10 @@ read_range_n(Session, TabName, StartKey, N) ->
 		  WriteKvps :: [kvp()]) ->
     ok | {error, Reason :: term()}.
 batch_write(Session, TabName, DeleteKeys, WriteKvps) ->
-    Data = gen_server:call(Session, {batch_write, TabName, DeleteKeys, WriteKvps}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'BatchWrite'{table_name = TabName,
+		      delete_keys = make_keys(DeleteKeys),
+		      write_kvps = make_kvls(WriteKvps)},
+    transaction(Session, {batch_write, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -315,8 +326,8 @@ batch_write(Session, TabName, DeleteKeys, WriteKvps) ->
     {ok, KVP :: kvp(), Ref :: pid()} |
     {error, Reason :: invalid | term()}.
 first(Session, TabName) ->
-    Data = gen_server:call(Session, {first, TabName}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'First'{table_name = TabName},
+    transaction(Session, {first, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -328,8 +339,8 @@ first(Session, TabName) ->
     {ok, KVP :: kvp(), Ref :: pid()} |
     {error, Reason :: invalid | term()}.
 last(Session, TabName) ->
-    Data = gen_server:call(Session, {last, TabName}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'Last'{table_name = TabName},
+    transaction(Session, {last, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -342,8 +353,9 @@ last(Session, TabName) ->
     {ok, KVP :: kvp(), Ref :: pid()} |
     {error, Reason :: invalid | term()}.
 seek(Session, TabName, Key) ->
-    Data = gen_server:call(Session, {seek, TabName, Key}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'Seek'{table_name = TabName,
+		key = make_seq_of_fields(Key)},
+    transaction(Session, {seek, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -356,8 +368,8 @@ seek(Session, TabName, Key) ->
     {ok, KVP :: kvp()} |
     {error, Reason :: invalid | term()}.
 next(Session, Ref) ->
-    Data = gen_server:call(Session, {next, Ref}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'Next'{it = Ref},
+    transaction(Session, {next, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -370,8 +382,8 @@ next(Session, Ref) ->
     {ok, KVP :: kvp()} |
     {error, Reason :: invalid | term()}.
 prev(Session, Ref) ->
-    Data = gen_server:call(Session, {prev, Ref}, ?REQ_TIMEOUT),
-    decode(Data).
+    P = #'Prev'{it = Ref},
+    transaction(Session, {prev, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -385,7 +397,7 @@ prev(Session, Ref) ->
 handle_incomming_data(CorrID, Data, TransactionRegister) ->
     case lookup_request(TransactionRegister, CorrID) of
 	{ok, Client} ->
-	    gen_server:reply(Client, Data),
+	    Client ! {response, Data},
 	    true = ets:delete(TransactionRegister, CorrID),
 	    ok;
 	{error, not_found} ->
@@ -398,7 +410,7 @@ handle_incomming_data(CorrID, Data, TransactionRegister) ->
 %% ------------------------------------------------------------------
 
 -spec init(Args :: [{atom(), term()}]) ->
-    {ok, State :: #state{}} | {stop, Reason :: term()}.
+    {ok, State :: map()} | {stop, Reason :: term()}.
 init(Args) ->
     Pid = proplists:get_value(pid, Args),
     MonitorRef = erlang:monitor(process, Pid),
@@ -410,12 +422,13 @@ init(Args) ->
 	{ok, Socket} ->
 	    ssl:setopts(Socket, [{packet, 4}]),
 	    TR = ets:new(transaction_register, [set, public, {keypos, 1}]),
-	    Counter = ets:new(counter, [set, protected]),
+	    Counter = ets:new(counter, [set, public]),
 	    ets:insert(Counter, {transaction_id, ?TID_THRESHOLD}),
-	    {ok, #state{socket = Socket,
-			transaction_register = TR,
-			counter = Counter,
-			monitor_ref = MonitorRef}};
+	    {ok, #{socket => Socket,
+		   transaction_register => TR,
+		   counter => Counter,
+		   timeout => ?REQ_TIMEOUT,
+		   monitor_ref => MonitorRef}};
 	{error, _Reason} ->
 	    {stop, normal}
     end.
@@ -428,84 +441,15 @@ init(Args) ->
 %%--------------------------------------------------------------------
 -spec handle_call(Request :: term(),
 		  From :: {pid(), Tag :: term()},
-		  State :: #state{}) ->
+		  State :: #{}) ->
     {reply, Reply, State} |
     {reply, Reply, State, Timeout} |
     {noreply, State} |
     {noreply, State, Timeout} |
     {stop, Reason, Reply, State} |
     {stop, Reason, State}.
-handle_call({create_table, TableName, KeyDef, Options}, From, State) ->
-    P = #'CreateTable'{table_name = TableName,
-		       keys = KeyDef,
-		       table_options = make_set_of_table_option(Options)},
-    send_request({create_table, P}, From, State);
-handle_call({delete_table, TableName}, From, State) ->
-    P = #'DeleteTable'{table_name = TableName},
-    send_request({delete_table, P}, From, State);
-handle_call({open_table, TableName}, From, State) ->
-    P = #'OpenTable'{table_name = TableName},
-    send_request({open_table, P}, From, State);
-handle_call({close_table, TableName}, From, State) ->
-    P = #'CloseTable'{table_name = TableName},
-    send_request({close_table, P}, From, State);
-handle_call({table_info, TableName}, From, State) ->
-    P = #'TableInfo'{table_name = TableName},
-    send_request({table_info, P}, From, State);
-handle_call({table_info, TableName, Attributes}, From, State) ->
-    P = #'TableInfo'{table_name = TableName,
-		     attributes = Attributes},
-    send_request({table_info, P}, From, State);
-handle_call({read, TableName, Key}, From, State) ->
-    P = #'Read'{table_name = TableName,
-		key = make_seq_of_fields(Key)},
-    send_request({read, P}, From, State);
-handle_call({write, TableName, Key, Columns}, From, State) ->
-    P = #'Write'{table_name = TableName,
-		 key = make_seq_of_fields(Key),
-		 columns = make_seq_of_fields(Columns)},
-    send_request({write, P}, From, State);
-handle_call({update, TableName, Key, Op}, From, State) ->
-    P = #'Update'{table_name = TableName,
-		  key = make_seq_of_fields(Key),
-		  update_operation = make_update_operations(Op)},
-    send_request({update, P}, From, State);
-handle_call({delete, TableName, Key}, From, State) ->
-    P = #'Delete'{table_name = TableName,
-		  key = make_seq_of_fields(Key)},
-    send_request({delete, P}, From, State);
-handle_call({read_range, TableName, StartKey, EndKey, Chunk}, From, State) ->
-    P = #'ReadRange'{table_name = TableName,
-		     start_key = make_seq_of_fields(StartKey),
-		     end_key = make_seq_of_fields(EndKey),
-		     limit = Chunk},
-    send_request({read_range, P}, From, State);
-handle_call({read_range_n, TableName, StartKey, N}, From, State) ->
-    P = #'ReadRangeN'{table_name = TableName,
-		      start_key = make_seq_of_fields(StartKey),
-		      n = N},
-    send_request({read_range_n, P}, From, State);
-handle_call({batch_write, TableName, DeleteKeys, WriteKvls}, From, State) ->
-    P = #'BatchWrite'{table_name = TableName,
-		      delete_keys = make_keys(DeleteKeys),
-		      write_kvps = make_kvls(WriteKvls)},
-    send_request({batch_write, P}, From, State);
-handle_call({first, TableName}, From, State) ->
-    P = #'First'{table_name = TableName},
-    send_request({first, P}, From, State);
-handle_call({last, TableName}, From, State) ->
-    P = #'Last'{table_name = TableName},
-    send_request({last, P}, From, State);
-handle_call({seek, TableName, Key}, From, State) ->
-    P = #'Seek'{table_name = TableName,
-		key = make_seq_of_fields(Key)},
-    send_request({seek, P}, From, State);
-handle_call({next, It}, From, State) ->
-    P = #'Next'{it = It},
-    send_request({next, P}, From, State);
-handle_call({prev, It}, From, State) ->
-    P = #'Prev'{it = It},
-    send_request({prev, P}, From, State);
+handle_call(get_state, _From, State) ->
+    {reply, State, State};
 handle_call(_Request, _From, State) ->
     ?notice("Unhandled gen_server Request: ~p, From ~p, State: ~p",
 	    [_Request, _From, State]),
@@ -517,11 +461,11 @@ handle_call(_Request, _From, State) ->
 %% Handling cast messages
 %% @end
 %%--------------------------------------------------------------------
--spec handle_cast(Msg :: term(), State :: #state{}) ->
-    {noreply, State :: #state{}} |
-    {noreply, State :: #state{}, Timeout :: integer()} |
-    {stop, Reason :: term(), State :: #state{}}.
-handle_cast(disconnect, State = #state{socket = Socket}) ->
+-spec handle_cast(Msg :: term(), State :: map()) ->
+    {noreply, State :: map()} |
+    {noreply, State :: map(), Timeout :: integer()} |
+    {stop, Reason :: term(), State :: map()}.
+handle_cast(disconnect, State = #{socket := Socket}) ->
     ?debug("Closing socket: ~p", [Socket]),
     ok = ssl:close(Socket),
     {stop, normal, State};
@@ -535,29 +479,29 @@ handle_cast(_Msg, State) ->
 %% Handling all non call/cast messages
 %% @end
 %%--------------------------------------------------------------------
--spec handle_info(Info :: term, State :: #state{}) ->
-    {noreply, State :: #state{}} |
-    {noreply, State :: #state{}, Timeout :: integer()} |
-    {stop, Reason :: term(), State :: #state{}}.
+-spec handle_info(Info :: term, State :: map()) ->
+    {noreply, State :: map()} |
+    {noreply, State :: map(), Timeout :: integer()} |
+    {stop, Reason :: term(), State :: map()}.
 handle_info({ssl_closed, Port}, State) ->
     ?debug("ssl_closed: ~p, stopping..", [Port]),
     {stop, ssl_closed, State};
 handle_info({ssl, Socket, <<B1,B2, Data/binary>>},
-	    State = #state{transaction_register = TR}) ->
+	    State = #{transaction_register := TR}) ->
     ?debug("Received ssl data: ~p",[Data]),
     spawn(?MODULE, handle_incomming_data, [<<B1,B2>>, Data, TR]),
     ok = ssl:setopts(Socket, [{active, once}]),
     {noreply, State};
 handle_info({'DOWN', Ref, process, _Pid, Reason},
-	    State = #state{monitor_ref = Ref}) ->
+	    State = #{monitor_ref := Ref}) ->
     ?debug("Stopping after socket owner process is 'DOWN', ~p", [Reason]),
     {stop, normal, State};
 handle_info(_Info, State) ->
     ?debug("Unhandled info received: ~p", [_Info]),
     {noreply, State}.
 
-terminate(_Reason, State) ->
-    erlang:demonitor(State#state.monitor_ref),
+terminate(_Reason, #{monitor_ref := Ref}) ->
+    erlang:demonitor(Ref),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -566,25 +510,29 @@ code_change(_OldVsn, State, _Extra) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 % ------------------------------------------------------------------
--spec send_request(Procedure :: {atom(), term()},
-		   From :: {pid(), Tag :: term()},
-		   State :: #state{}) ->
-    {noreply, State :: #state{}} |
-    {reply, {error, Reason :: term()}, State :: #state{}}.
-send_request(Procedure, From,
-	     State = #state{socket = Socket,
-			    transaction_register = TR,
-			    counter = Counter}) ->
+-spec transaction(Session :: pid(),
+		  Procedure :: {atom(), term()}) -> term().
+transaction(Session, Procedure) ->
+    #{socket := Socket,
+      transaction_register := TR,
+      counter := Counter,
+      timeout := TO} = gen_server:call(Session, get_state),
     {Tid, PDU} = get_pdu(Counter, Procedure),
     ?debug("Encoding PDU: ~p", [PDU]),
     Bin = apollo_pb:encode_msg(PDU),
     CorrId = encode_unsigned_16(Tid),
     case send(Socket, CorrId, Bin) of
 	ok ->
-	    true = ets:insert(TR, {CorrId, From}),
-	    {noreply, State};
+	    true = ets:insert(TR, {CorrId, self()}),
+	    receive
+		{response, Data} ->
+		    decode(Data)
+	    after
+		TO ->
+		    {error, timeout}
+	    end;
 	{error, Reason} ->
-	    {reply, {error, Reason}, State}
+	    {error, Reason}
     end.
 
 -spec send(Socket :: port(),
