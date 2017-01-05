@@ -1,16 +1,31 @@
 -type field_name() :: string().
--type key() :: [{atom(), term()}].
+-type key() :: [{field_name(), term()}].
 -type key_range() :: {key(), key()}.
 -type value() :: term().
 -type kvp() :: {key(), value()}.
--type column() :: {atom(), term()}.
+-type column() :: {field_name(), term()}.
+
+-type update_treshold() :: pos_integer().
+-type update_setvalue() :: pos_integer().
+-type update_instruction() :: increment |
+                              {increment, update_treshold(), update_setvalue()} |
+			      overwrite.
+
+-type update_data() :: pos_integer() | term().
+-type update_default() :: pos_integer() | term().
+-type update_op() :: [
+		      {field_name(), update_instruction(), update_data()} |
+                      {field_name(), update_instruction(), update_data(), update_default()}
+		     ].
 
 -type type() :: leveldb |
-                ets_leveldb |
+                mem_leveldb |
 		leveldb_wrapped |
-		ets_leveldb_wrapped.
+		mem_leveldb_wrapped |
+		leveldb_tda |
+		mem_leveldb_tda.
 
--type data_model() :: binary | array | hash.
+-type data_model() :: kv | array | map.
 -type num_of_buckets() :: pos_integer().
 
 -type time_margin() :: {seconds, pos_integer()} |
@@ -19,31 +34,33 @@
 		       undefined.
 
 -type size_margin() :: {megabytes, pos_integer()} |
-                       undefined.
+                       {gigabytes, pos_integer()} |
+		       undefined.
 
--type wrapper() :: {num_of_buckets(), time_margin(), size_margin()}.
+-type time_unit() :: second | millisecond | microsecond | nanosecond.
+
+-type hashing_method() :: virtual_nodes | consistent | uniform | rendezvous.
+
+-record(wrapper, {num_of_buckets :: pos_integer(),
+                  time_margin :: time_margin(),
+		  size_margin :: size_margin()}).
+
+-record(tda, {num_of_buckets :: pos_integer(),
+	      time_margin :: time_margin(),
+	      ts_field :: string(),
+	      precision :: time_unit()}).
 
 -type comparator() ::  descending | ascending.
 
--type table_option() :: [{type, type()} |
-			 {data_model, data_model()} |
-			 {wrapper, wrapper()} |
-			 {mem_wrapper, wrapper()} |
-			 {comparator, comparator()} |
-			 {time_series, boolean()} |
-			 {shards, integer()} |
-			 {clusters, [{string(), pos_integer()}]}].
-
--type update_treshold() :: pos_integer().
--type update_setvalue() :: pos_integer().
--type update_instruction() :: increment |
-                              {increment, update_treshold(), update_setvalue()}
-|
-                              overwrite.
--type update_data() :: pos_integer() | term().
--type update_default() :: pos_integer() | term().
--type update_op() :: [
-                      {field_name(), update_instruction(), update_data()}|
-                      {field_name(), update_instruction(), update_data(), update_default()}
-                     ].
-
+-type table_option() :: {type, type()} |
+			{data_model, data_model()} |
+			{wrapper, #wrapper{}} |
+			{mem_wrapper, #wrapper{}} |
+			{comparator, comparator()} |
+			{time_series, boolean()} |
+			{shards, integer()} |
+			{distributed, boolean()} |
+			{replication_factor, integer()} |
+			{hash_exclude, [string()]} |
+			{hashing_method, hashing_method()} |
+			{tda, #tda{}}.

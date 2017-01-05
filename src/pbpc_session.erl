@@ -73,6 +73,18 @@
 -define(TID_THRESHOLD, 65535).
 -define(REQ_TIMEOUT, 30000).
 
+-type pbp_table_option() :: {type, 'LEVELDB' | 'MEMLEVELDB' | 'LEVELDBWRAPPED' | 'MEMLEVELDBWRAPPED' | 'LEVELDBTDA' | 'MEMLEVELDBTDA'} |
+			    {data_model, 'KV' | 'ARRAY' | 'MAP'} |
+			    {wrapper, #'Wrapper'{}} |
+			    {mem_wrapper, #'Wrapper'{}} |
+			    {comparator, 'DESCENDING' | 'ASCENDING'} |
+			    {time_series, boolean()} |
+			    {shards, integer()} |
+			    {distributed, boolean()} |
+			    {replication_factor, integer()} |
+			    {hash_exclude, [string()]} |
+			    {hashing_method, 'VIRTUALNODES' | 'CONSISTENT' | 'UNIFORM' | 'RENDEZVOUS'} |
+			    {tda, #'Tda'{}}.
 %% ------------------------------------------------------------------
 %% API Function Definitions
 %% ------------------------------------------------------------------
@@ -763,17 +775,6 @@ get_return_value(#'ApolloPdu'{procedure =
 		    {error, #'Error'{cause = Cause}}}) ->
     {error, Cause}.
 
--type pbp_table_option() :: {type, type()} |
-			    {data_model, data_model()} |
-			    {wrapper, #'Wrapper'{}} |
-			    {mem_wrapper, #'Wrapper'{}} |
-			    {comparator, comparator()} |
-			    {time_series, boolean()} |
-			    {shards, integer()} |
-			    {distributed, boolean()} |
-			    {replication_factor, integer()} |
-			    {hash_exclude, [string()]}.
-
 -spec make_set_of_table_option(Options :: [table_option()]) ->
     [pbp_table_option()].
 make_set_of_table_option(Options) ->
@@ -787,17 +788,22 @@ make_set_of_table_option([], Acc) ->
 make_set_of_table_option([{type, T}|Rest], Acc) ->
     make_set_of_table_option(Rest, [translate_options({type, T}) | Acc]);
 make_set_of_table_option([{data_model, DT}|Rest], Acc) ->
-    make_set_of_table_option(Rest, [{data_model, DT} | Acc]);
-make_set_of_table_option([{wrapper, {NB, TM, SM}}|Rest], Acc) ->
-    Wrapper = #'Wrapper'{num_of_buckets = NB,
-			 time_margin = TM,
-			 size_margin = SM},
+    make_set_of_table_option(Rest, [translate_options({data_model, DT}) | Acc]);
+make_set_of_table_option([{wrapper, Wrp} | Rest], Acc) ->
+    Wrapper = setelement(1, Wrp, 'Wrapper'),
     make_set_of_table_option(Rest, [{wrapper, Wrapper} | Acc]);
-make_set_of_table_option([{mem_wrapper, {NB, TM, SM}}|Rest], Acc) ->
-    Wrapper = #'Wrapper'{num_of_buckets = NB,
-			 time_margin = TM,
-			 size_margin = SM},
+make_set_of_table_option([{mem_wrapper, Wrp}|Rest], Acc) ->
+    Wrapper = setelement(1, Wrp, 'Wrapper'),
     make_set_of_table_option(Rest, [{mem_wrapper, Wrapper} | Acc]);
+make_set_of_table_option([{tda, #tda{num_of_buckets = NB,
+				     time_margin = TM,
+				     ts_field = TF,
+				     precision = P}}|Rest], Acc) ->
+    Tda = #'Tda'{num_of_buckets = NB,
+		 time_margin = TM,
+		 ts_field = TF,
+		 precision = translate_precision(P)},
+    make_set_of_table_option(Rest, [{tda, Tda} | Acc]);
 make_set_of_table_option([{comparator, C}|Rest], Acc) ->
     make_set_of_table_option(Rest, [{comparator, C} | Acc]);
 make_set_of_table_option([{time_series, T}|Rest], Acc) ->
@@ -810,6 +816,8 @@ make_set_of_table_option([{replication_factor, RF}|Rest], Acc) ->
     make_set_of_table_option(Rest, [{replication_factor, RF} | Acc]);
 make_set_of_table_option([{hash_exclude, HE}|Rest], Acc) ->
     make_set_of_table_option(Rest, [{hash_exclude, HE} | Acc]);
+make_set_of_table_option([{hashing_method, HE}|Rest], Acc) ->
+    make_set_of_table_option(Rest, [{hashing_method, HE} | Acc]);
 make_set_of_table_option([_Else|Rest], Acc) ->
     ?debug("Unknown table option: ~p", [_Else]),
     make_set_of_table_option(Rest, Acc).
@@ -910,14 +918,46 @@ strip_fields([], Acc) ->
 
 -spec translate_options(Option :: table_option()) ->
     PBP_Option :: pbp_table_option().
-translate_options({type, ets_leveldb}) ->
-    {type, etsLeveldb};
+translate_options({type, leveldb}) ->
+    {type, 'LEVELDB'};
+translate_options({type, mem_leveldb}) ->
+    {type, 'MEMLEVELDB'};
 translate_options({type, leveldb_wrapped}) ->
-    {type, leveldbWrapped};
-translate_options({type, ets_leveldb_wrapped}) ->
-    {type, etsLeveldbWrapped};
+    {type, 'LEVELDBWRAPPED'};
+translate_options({type, mem_leveldb_wrapped}) ->
+    {type, 'MEMLEVELDBWRAPPED'};
+translate_options({type, leveldb_tda}) ->
+    {type, 'LEVELDBTDA'};
+translate_options({type, mem_leveldb_tda}) ->
+    {type, 'MEMLEVELDBTDA'};
+translate_options({data_model, kv}) ->
+    {data_model, 'KV'};
+translate_options({data_model, array}) ->
+    {data_model, 'ARRAY'};
+translate_options({data_model, map}) ->
+    {data_model, 'MAP'};
+translate_options({comparator, descending}) ->
+    {comparator, 'DESCENDING'};
+translate_options({comparator, ascending}) ->
+    {comparator, 'ASCENDING'};
+translate_options({hashing_method, virtual_nodes}) ->
+    {hashing_method, 'VIRTUALNODES'};
+translate_options({hashing_method, consistent}) ->
+    {hashing_method, 'CONSISTENT'};
+translate_options({hashing_method, uniform}) ->
+    {hashing_method, 'UNIFORM'};
+translate_options({hashing_method, rendezvous}) ->
+    {hashing_method, 'RENDEZVOUS'};
 translate_options(Option) ->
     Option.
+
+-spec translate_precision(P :: time_unit()) ->
+    'SECOND' | 'MILLISECOND' | 'MICROSECOND' | 'NANOSECOND'.
+translate_precision(second)-> 'SECOND';
+translate_precision(millisecond)-> 'MILLISECOND';
+translate_precision(microsecond)-> 'MICROSECOND';
+translate_precision(nanosecond)-> 'NANOSECOND';
+translate_precision(P)-> P.
 
 -spec make_update_operations(Op :: update_op()) ->
     [#'UpdateOperation'{}].
