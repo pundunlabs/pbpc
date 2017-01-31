@@ -48,3 +48,4 @@ rebar.lock
 include/apollo_pb.hrl
 include/gpb
 src/apollo_pb.erl
+config/proto

@@ -5,10 +5,10 @@
 -type kvp() :: {key(), value()}.
 -type column() :: {field_name(), term()}.
 
--type update_treshold() :: pos_integer().
+-type update_threshold() :: pos_integer().
 -type update_setvalue() :: pos_integer().
 -type update_instruction() :: increment |
-                              {increment, update_treshold(), update_setvalue()} |
+                              {increment, update_threshold(), update_setvalue()} |
 			      overwrite.
 
 -type update_data() :: pos_integer() | term().

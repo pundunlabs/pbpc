@@ -239,10 +239,10 @@ write(Session, TabName, Key, Columns) ->
 %% @doc
 %% Update Key according to Op on the table TabName.
 %% field_name() :: string().
-%% treshold() :: pos_integer().
+%% threshold() :: pos_integer().
 %% setvalue() :: pos_integer().
 %% update_instruction() :: increment |
-%%                         {increment, treshold(), setvalue()} |
+%%                         {increment, threshold(), setvalue()} |
 %%                         overwrite.
 %% data() :: pos_integer() | term().
 %% default() :: pos_integer() | term().
@@ -985,13 +985,13 @@ make_update_operations([], Acc) ->
     #'UpdateInstruction'{}.
 make_update_instruction(increment) ->
     #'UpdateInstruction'{instruction = 'INCREMENT',
-			 treshold = <<>>,
+			 threshold = <<>>,
 			 set_value = <<>>};
 make_update_instruction({increment, T, S}) ->
     #'UpdateInstruction'{instruction = 'INCREMENT',
-			 treshold = binary:encode_unsigned(T, big),
+			 threshold = binary:encode_unsigned(T, big),
 			 set_value = binary:encode_unsigned(S, big)};
 make_update_instruction(overwrite) ->
     #'UpdateInstruction'{instruction = 'OVERWRITE',
-			 treshold = <<>>,
+			 threshold = <<>>,
 			 set_value = <<>>}.
