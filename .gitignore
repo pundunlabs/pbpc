@@ -46,6 +46,6 @@ rel/files
 .concrete/DEV_MODE
 rebar.lock
 include/apollo_pb.hrl
+include/apollo
 include/gpb
 src/apollo_pb.erl
-config/proto
