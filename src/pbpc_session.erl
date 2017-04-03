@@ -776,9 +776,10 @@ get_return_value(#'ApolloPdu'{procedure =
     {error, Cause}.
 
 -spec make_set_of_table_option(Options :: [table_option()]) ->
-    [pbp_table_option()].
+    [#'TableOption'{}].
 make_set_of_table_option(Options) ->
-    make_set_of_table_option(Options, []).
+    List = make_set_of_table_option(Options, []),
+    [#'TableOption'{opt = O} || O <- List].
 
 -spec make_set_of_table_option(Options :: [table_option()],
 			       Acc :: [pbp_table_option()]) ->

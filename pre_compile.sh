@@ -1,6 +1,13 @@
 #!/bin/sh
 cd include
-git clone https://github.com/erdemaksu/apollo.git
+
+REPOSRC=https://github.com/erdemaksu/apollo.git
+if [ ! -d apollo ]
+then
+    git clone $REPOSRC apollo
+else
+    (cd apollo && git pull $REPOSRC)
+fi
 
 # Create a symbolic link so gpb plugin can access gpb.hrl
 MY_LINK=gpb
