@@ -10,9 +10,9 @@ else
 fi
 
 # Create a symbolic link so gpb plugin can access gpb.hrl
-MY_LINK=gpb
+MY_LINK=gpb.hrl
 if [ -L $MY_LINK ]; then
     rm $MY_LINK
 fi
-ln -s $REBAR_PLUGINS_DIR/gpb/include $MY_LINK
+ln -s $REBAR_PLUGINS_DIR/gpb/include/gpb.hrl $MY_LINK
 # End

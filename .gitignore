@@ -47,5 +47,5 @@ rel/files
 rebar.lock
 include/apollo_pb.hrl
 include/apollo
-include/gpb
+include/gpb.hrl
 src/apollo_pb.erl
