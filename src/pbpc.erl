@@ -40,7 +40,10 @@
 	 last/2,
 	 seek/3,
 	 next/2,
-	 prev/2]).
+	 prev/2,
+	 add_index/3,
+	 remove_index/3,
+	 index_read/4]).
 
 -include("pbpc.hrl").
 
@@ -301,6 +304,43 @@ next(Session, Ref) ->
     {error, Reason :: invalid | term()}.
 prev(Session, Ref) ->
     pbpc_session:prev(Session, Ref).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Add index on given columns for the table.
+%% @end
+%%--------------------------------------------------------------------
+-spec add_index(Session :: pid(),
+		TabName :: string(),
+		Columns :: [string()]) ->
+    ok | {error, Reason :: term()}.
+add_index(Session, TabName, Columns) ->
+    pbpc_session:add_index(Session, TabName, Columns).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Remove index on given columns for the table.
+%% @end
+%%--------------------------------------------------------------------
+-spec remove_index(Session :: pid(),
+		   TabName :: string(),
+		   Columns :: [string()]) ->
+    ok | {error, Reason :: term()}.
+remove_index(Session, TabName, Columns) ->
+    pbpc_session:remove_index(Session, TabName, Columns).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Index read on given tables column.
+%% @end
+%%--------------------------------------------------------------------
+-spec index_read(Session :: pid(),
+		 TabName :: string(),
+		 Column :: string(),
+		 Term :: string()) ->
+    ok | {error, Reason :: term()}.
+index_read(Session, TabName, Column, Term) ->
+    pbpc_session:index_read(Session, TabName, Column,Term).
 
 %%%===================================================================
 %%% Internal functions

@@ -33,4 +33,3 @@ init([pbpc_session_sup]) ->
     {ok, {{simple_one_for_one, 0, 1},
           [{pbpc_session, {pbpc_session, start_link, []},
             temporary, 2000, worker, [pbpc_session]}]}}.
-

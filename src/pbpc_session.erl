@@ -48,7 +48,10 @@
 	 last/2,
 	 seek/3,
 	 next/2,
-	 prev/2]).
+	 prev/2,
+	 add_index/3,
+	 remove_index/3,
+	 index_read/4]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -396,6 +399,50 @@ next(Session, Ref) ->
 prev(Session, Ref) ->
     P = #'Prev'{it = Ref},
     transaction(Session, {prev, P}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Add index on given columns for the table.
+%% @end
+%%--------------------------------------------------------------------
+-spec add_index(Session :: pid(),
+		TabName :: string(),
+		Columns :: [string()]) ->
+    ok | {error, Reason :: term()}.
+add_index(Session, TabName, Columns) ->
+    P = #'AddIndex'{table_name = TabName,
+		    columns = Columns},
+    transaction(Session, {add_index, P}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Remove index on given columns for the table.
+%% @end
+%%--------------------------------------------------------------------
+-spec remove_index(Session :: pid(),
+		   TabName :: string(),
+		   Columns :: [string()]) ->
+    ok | {error, Reason :: term()}.
+remove_index(Session, TabName, Columns) ->
+    P = #'RemoveIndex'{table_name = TabName,
+		       columns = Columns},
+    transaction(Session, {remove_index, P}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Index read on given tables column.
+%% @end
+%%--------------------------------------------------------------------
+-spec index_read(Session :: pid(),
+		 TabName :: string(),
+		 Column :: string(),
+		 Term :: string()) ->
+    ok | {error, Reason :: term()}.
+index_read(Session, TabName, Column, Term) ->
+    P = #'IndexRead'{table_name = TabName,
+		     column_name = Column,
+		     term = Term},
+    transaction(Session, {index_read, P}).
 
 %%--------------------------------------------------------------------
 %% @doc
