@@ -853,11 +853,11 @@ make_set_of_table_option([{tda, #tda{num_of_buckets = NB,
 		 precision = translate_precision(P)},
     make_set_of_table_option(Rest, [{tda, Tda} | Acc]);
 make_set_of_table_option([{comparator, C}|Rest], Acc) ->
-    make_set_of_table_option(Rest, [{comparator, C} | Acc]);
+    make_set_of_table_option(Rest, [translate_options({comparator, C}) | Acc]);
 make_set_of_table_option([{time_series, T}|Rest], Acc) ->
     make_set_of_table_option(Rest, [{time_series, T} | Acc]);
-make_set_of_table_option([{shards, S}|Rest], Acc) ->
-    make_set_of_table_option(Rest, [{shards, S} | Acc]);
+make_set_of_table_option([{num_of_shards, S}|Rest], Acc) ->
+    make_set_of_table_option(Rest, [{num_of_shards, S} | Acc]);
 make_set_of_table_option([{distributed, D}|Rest], Acc) ->
     make_set_of_table_option(Rest, [{distributed, D} | Acc]);
 make_set_of_table_option([{replication_factor, RF}|Rest], Acc) ->
@@ -865,7 +865,9 @@ make_set_of_table_option([{replication_factor, RF}|Rest], Acc) ->
 make_set_of_table_option([{hash_exclude, HE}|Rest], Acc) ->
     make_set_of_table_option(Rest, [{hash_exclude, HE} | Acc]);
 make_set_of_table_option([{hashing_method, HE}|Rest], Acc) ->
-    make_set_of_table_option(Rest, [{hashing_method, HE} | Acc]);
+    make_set_of_table_option(Rest, [translate_options({hashing_method, HE}) | Acc]);
+make_set_of_table_option([{ttl, TTL}|Rest], Acc) when is_integer(TTL) ->
+    make_set_of_table_option(Rest, [{ttl, TTL} | Acc]);
 make_set_of_table_option([_Else|Rest], Acc) ->
     ?debug("Unknown table option: ~p", [_Else]),
     make_set_of_table_option(Rest, Acc).
@@ -966,6 +968,8 @@ strip_fields([], Acc) ->
 
 -spec translate_options(Option :: table_option()) ->
     PBP_Option :: pbp_table_option().
+translate_options({type, rocksdb}) ->
+    {type, 'ROCKSDB'};
 translate_options({type, leveldb}) ->
     {type, 'LEVELDB'};
 translate_options({type, mem_leveldb}) ->
