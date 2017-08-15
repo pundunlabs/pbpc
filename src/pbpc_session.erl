@@ -407,11 +407,11 @@ prev(Session, Ref) ->
 %%--------------------------------------------------------------------
 -spec add_index(Session :: pid(),
 		TabName :: string(),
-		Columns :: [string()]) ->
+		IndexConfig :: [{string(), map()}]) ->
     ok | {error, Reason :: term()}.
-add_index(Session, TabName, Columns) ->
+add_index(Session, TabName, IndexConfig) ->
     P = #'AddIndex'{table_name = TabName,
-		    columns = Columns},
+		    config = make_index_config(IndexConfig)},
     transaction(Session, {add_index, P}).
 
 %%--------------------------------------------------------------------
@@ -622,7 +622,8 @@ encode_unsigned_16(Int) ->
 	      Password :: string()) ->
     {ok, Socket :: port()} | {error, Reason :: term()}.
 connect_(IP, Port, Username, Password) ->
-    case ssl:connect(IP, Port, [{active,false}]) of
+    case ssl:connect(IP, Port, [{active,false},
+				{server_name_indication, disable}]) of
 	{ok, Socket} ->
 	    authenticate(Socket, Username, Password);
 	{error, Reason} ->
@@ -671,7 +672,7 @@ authenticate(wait_server_first_message, Map) ->
 	    AuthMessage = ClientFirstMsgBare ++ "," ++
 			  ServerFirstMsg ++ "," ++
 			  CFMWoP,
-	    
+
 	    SaltedPassword = scramerl_lib:hi(Normalized, Salt, IterCount),
 	    ?debug("SaltedPassword: ~p~n",[SaltedPassword]),
 	    ?debug("AuthMessage: ~p~n",[AuthMessage]),
@@ -1047,3 +1048,81 @@ make_update_instruction(overwrite) ->
     #'UpdateInstruction'{instruction = 'OVERWRITE',
 			 threshold = <<>>,
 			 set_value = <<>>}.
+
+-spec make_index_config(IndexConfig :: [map()]) ->
+    [#'IndexConfig'{}].
+make_index_config(IndexConfig) ->
+    make_index_config(IndexConfig, []).
+
+make_index_config([#{column := Column, options := Config} | Rest], Acc) ->
+    IndexConfig = #'IndexConfig'{column = Column,
+				 options = make_index_option(Config)},
+    make_index_config(Rest, [IndexConfig | Acc]);
+make_index_config([], Acc) ->
+    lists:reverse(Acc).
+
+make_index_option(Config) ->
+   #'IndexOptions'{char_filter = make_char_filter(Config),
+		   tokenizer = make_tokenizer(Config),
+		   token_filter = make_token_filter(Config)}.
+
+make_char_filter(#{char_filter := nfc}) ->
+    'NFC';
+make_char_filter(#{char_filter := nfd}) ->
+    'NFD';
+make_char_filter(#{char_filter := nfkc}) ->
+    'NFKC';
+make_char_filter(#{char_filter := nfkd}) ->
+    'NFKD';
+make_char_filter(_) ->
+    asn1_NOVALUE.
+
+make_tokenizer(#{tokenizer := unicode_word_boundaries}) ->
+    'UNICODE_WORD_BOUNDARIES';
+make_tokenizer(_) ->
+    asn1_NOVALUE.
+
+make_token_filter(#{token_filter := TokenFilter} ) ->
+    #'TokenFilter'{transform = make_token_transform(TokenFilter),
+		   add = make_token_add_filter(TokenFilter),
+		   delete = make_token_delete_filter(TokenFilter),
+		   stats = make_token_stats(TokenFilter)};
+make_token_filter(_) ->
+    asn1_NOVALUE.
+
+make_token_transform(#{transform := lowercase}) ->
+    'LOWERCASE';
+make_token_transform(#{transform := uppercase}) ->
+    'UPPERCASE';
+make_token_transform(#{transform := casefold}) ->
+    'CASEFOLD';
+make_token_transform(_) ->
+    asn1_NOVALUE.
+
+make_token_add_filter(#{add := L}) when is_list(L) ->
+    L;
+make_token_add_filter(_)->
+    [].
+
+make_token_delete_filter(#{delete := Stopwords}) ->
+    [handle_stopword(W) || W <- Stopwords];
+make_token_delete_filter(_) ->
+    [].
+
+handle_stopword(english_stopwords) ->
+    "$english_stopwords";
+handle_stopword(lucene_stopwords) ->
+    "$lucene_stopwords";
+handle_stopword(wikipages_stopwords) ->
+    "$wikipages_stopwords";
+handle_stopword(W) ->
+    W.
+
+make_token_stats(#{stats := unique}) ->
+    'UNIQUE';
+make_token_stats(#{stats := freqs}) ->
+    'FREQUENCY';
+make_token_stats(#{stats := position}) ->
+    'POSITION';
+make_token_stats(_) ->
+    'NOSTATS'.
