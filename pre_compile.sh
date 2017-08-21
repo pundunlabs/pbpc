@@ -1,13 +1,18 @@
 #!/bin/sh
 cd include
-
+APOLLO_TAG="v1.0.3"
 REPOSRC=https://github.com/erdemaksu/apollo.git
-if [ ! -d apollo ]
+LOCALREPO=apollo
+LOCALREPO_VC_DIR=$LOCALREPO/.git
+
+if [ ! -d $LOCALREPO_VC_DIR ]
 then
-    git clone $REPOSRC apollo
+    git clone $REPOSRC $LOCALREPO
 else
-    (cd apollo && git pull $REPOSRC)
+    (cd $LOCALREPO && git pull $REPOSRC --tags)
 fi
+
+(cd $LOCALREPO && git checkout $APOLLO_TAG 2>/dev/null || git checkout -b $APOLLO_TAG $APOLLO_TAG)
 
 # Create a symbolic link so gpb plugin can access gpb.hrl
 MY_LINK=gpb.hrl
