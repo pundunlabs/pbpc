@@ -1,6 +1,6 @@
 #!/bin/sh
 cd include
-APOLLO_TAG="v1.0.3"
+APOLLO_TAG="v1.0.4"
 REPOSRC=https://github.com/erdemaksu/apollo.git
 LOCALREPO=apollo
 LOCALREPO_VC_DIR=$LOCALREPO/.git

@@ -51,7 +51,7 @@
 	 prev/2,
 	 add_index/3,
 	 remove_index/3,
-	 index_read/4]).
+	 index_read/5]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -436,12 +436,14 @@ remove_index(Session, TabName, Columns) ->
 -spec index_read(Session :: pid(),
 		 TabName :: string(),
 		 Column :: string(),
-		 Term :: string()) ->
+		 Term :: string(),
+		 Limit :: integer() | undefined) ->
     ok | {error, Reason :: term()}.
-index_read(Session, TabName, Column, Term) ->
+index_read(Session, TabName, Column, Term, Limit) ->
     P = #'IndexRead'{table_name = TabName,
 		     column_name = Column,
-		     term = Term},
+		     term = Term,
+		     limit = Limit},
     transaction(Session, {index_read, P}).
 
 %%--------------------------------------------------------------------
@@ -585,6 +587,7 @@ transaction(Session, Procedure) ->
 	    true = ets:insert(TR, {CorrId, self()}),
 	    receive
 		{response, Data} ->
+		    ?debug("Response received: ~p", [Data]),
 		    decode(Data)
 	    after
 		TO ->
@@ -775,6 +778,7 @@ get_transaction_id(Counter) ->
     Response :: term().
 decode(Data)->
     PDU = apollo_pb:decode_msg(Data, 'ApolloPdu'),
+    ?debug("Response decoded: ~p", [PDU]),
     get_return_value(PDU).
 
 -spec get_return_value(PDU :: #'ApolloPdu'{}) ->
@@ -819,6 +823,10 @@ get_return_value(#'ApolloPdu'{procedure =
 							      columns = V},
 					 it = It}}}}}) ->
     {ok, {strip_fields(K), strip_fields(V)}, It};
+get_return_value(#'ApolloPdu'{procedure =
+		    {response, #'Response'{result =
+			{keys, #'Keys'{keys = Keys}}}}}) ->
+    {ok, [strip_fields(K) || K <- Keys]};
 get_return_value(#'ApolloPdu'{procedure =
 		    {error, #'Error'{cause = Cause}}}) ->
     {error, Cause}.

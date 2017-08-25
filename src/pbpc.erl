@@ -43,7 +43,8 @@
 	 prev/2,
 	 add_index/3,
 	 remove_index/3,
-	 index_read/4]).
+	 index_read/4,
+	 index_read/5]).
 
 -include("pbpc.hrl").
 
@@ -340,7 +341,25 @@ remove_index(Session, TabName, Columns) ->
 		 Term :: string()) ->
     ok | {error, Reason :: term()}.
 index_read(Session, TabName, Column, Term) ->
-    pbpc_session:index_read(Session, TabName, Column,Term).
+    pbpc_session:index_read(Session, TabName, Column, Term, undefined).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Index read on given tables column,
+%% fetch max limit number of postings.
+%% @end
+%%--------------------------------------------------------------------
+-spec index_read(Session :: pid(),
+		 TabName :: string(),
+		 Column :: string(),
+		 Term :: string(),
+		 Limit :: pos_integer() | undefined) ->
+    ok | {error, Reason :: term()}.
+index_read(Session, TabName, Column, Term, Limit) when is_integer(Limit),
+						       Limit > 0 ->
+    pbpc_session:index_read(Session, TabName, Column, Term, Limit);
+index_read(Session, TabName, Column, Term, undefined) ->
+    pbpc_session:index_read(Session, TabName, Column, Term, undefined).
 
 %%%===================================================================
 %%% Internal functions
