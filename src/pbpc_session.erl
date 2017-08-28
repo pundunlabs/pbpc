@@ -1057,22 +1057,27 @@ make_update_instruction(overwrite) ->
 			 threshold = <<>>,
 			 set_value = <<>>}.
 
--spec make_index_config(IndexConfig :: [map()]) ->
+-spec make_index_config(IndexConfig :: [{Column :: string(), Opts :: map()}]) ->
     [#'IndexConfig'{}].
 make_index_config(IndexConfig) ->
     make_index_config(IndexConfig, []).
 
-make_index_config([#{column := Column, options := Config} | Rest], Acc) ->
+make_index_config([{Column, Config} | Rest], Acc) ->
     IndexConfig = #'IndexConfig'{column = Column,
-				 options = make_index_option(Config)},
+				 options = make_index_options(Config)},
+    make_index_config(Rest, [IndexConfig | Acc]);
+make_index_config([Column | Rest], Acc) when is_list(Column)->
+    IndexConfig = #'IndexConfig'{column = Column},
     make_index_config(Rest, [IndexConfig | Acc]);
 make_index_config([], Acc) ->
     lists:reverse(Acc).
 
-make_index_option(Config) ->
+make_index_options(Config) when is_map(Config) ->
    #'IndexOptions'{char_filter = make_char_filter(Config),
 		   tokenizer = make_tokenizer(Config),
-		   token_filter = make_token_filter(Config)}.
+		   token_filter = make_token_filter(Config)};
+make_index_options(_) ->
+    undefined.
 
 make_char_filter(#{char_filter := nfc}) ->
     'NFC';
@@ -1083,12 +1088,12 @@ make_char_filter(#{char_filter := nfkc}) ->
 make_char_filter(#{char_filter := nfkd}) ->
     'NFKD';
 make_char_filter(_) ->
-    asn1_NOVALUE.
+    undefined.
 
 make_tokenizer(#{tokenizer := unicode_word_boundaries}) ->
     'UNICODE_WORD_BOUNDARIES';
 make_tokenizer(_) ->
-    asn1_NOVALUE.
+    undefined.
 
 make_token_filter(#{token_filter := TokenFilter} ) ->
     #'TokenFilter'{transform = make_token_transform(TokenFilter),
@@ -1096,7 +1101,7 @@ make_token_filter(#{token_filter := TokenFilter} ) ->
 		   delete = make_token_delete_filter(TokenFilter),
 		   stats = make_token_stats(TokenFilter)};
 make_token_filter(_) ->
-    asn1_NOVALUE.
+    undefined.
 
 make_token_transform(#{transform := lowercase}) ->
     'LOWERCASE';
@@ -1105,7 +1110,7 @@ make_token_transform(#{transform := uppercase}) ->
 make_token_transform(#{transform := casefold}) ->
     'CASEFOLD';
 make_token_transform(_) ->
-    asn1_NOVALUE.
+    undefined.
 
 make_token_add_filter(#{add := L}) when is_list(L) ->
     L;
