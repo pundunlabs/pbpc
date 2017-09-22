@@ -825,8 +825,15 @@ get_return_value(#'ApolloPdu'{procedure =
     {ok, {strip_fields(K), strip_fields(V)}, It};
 get_return_value(#'ApolloPdu'{procedure =
 		    {response, #'Response'{result =
-			{keys, #'Keys'{keys = Keys}}}}}) ->
-    {ok, [strip_fields(K) || K <- Keys]};
+			{postings, #'Postings'{list = Postings}}}}}) ->
+    {ok, [#{key => strip_fields(K),
+	    timestamp => Ts,
+	    frequency => Freq,
+	    position => Pos}
+	    || #'Posting'{key = K,
+			  timestamp = Ts,
+			  frequency = Freq,
+			  position = Pos} <- Postings]};
 get_return_value(#'ApolloPdu'{procedure =
 		    {error, #'Error'{cause = Cause}}}) ->
     {error, Cause}.
