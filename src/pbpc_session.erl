@@ -437,13 +437,21 @@ remove_index(Session, TabName, Columns) ->
 		 TabName :: string(),
 		 Column :: string(),
 		 Term :: string(),
-		 Limit :: integer() | undefined) ->
-    ok | {error, Reason :: term()}.
-index_read(Session, TabName, Column, Term, Limit) ->
+		 Filter ::  posting_filter()) ->
+    {ok, [posting()]} | {error, Reason :: term()}.
+index_read(Session, TabName, Column, Term, Filter) ->
+    SortBy = translate_sort_by(maps:get(sort_by, Filter, relevance)),
+    StartTs = maps:get(start_ts, Filter, undefined),
+    EndTs = maps:get(end_ts, Filter, undefined),
+    MaxPostings = maps:get(max_postings, Filter, undefined),
+    PostingFilter = #'PostingFilter'{sort_by = SortBy,
+				     start_ts = StartTs,
+				     end_ts = EndTs,
+				     max_postings = MaxPostings},
     P = #'IndexRead'{table_name = TabName,
 		     column_name = Column,
 		     term = Term,
-		     limit = Limit},
+		     filter = PostingFilter},
     transaction(Session, {index_read, P}).
 
 %%--------------------------------------------------------------------
@@ -1146,3 +1154,8 @@ make_token_stats(#{stats := position}) ->
     'POSITION';
 make_token_stats(_) ->
     'NOSTATS'.
+
+-spec translate_sort_by(S :: timestamp | term()) ->
+    'RELEVANCE' | 'TIMESTAMP'.
+translate_sort_by(timestamp)-> 'TIMESTAMP';
+translate_sort_by(_)-> 'RELEVANCE'.

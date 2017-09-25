@@ -339,9 +339,9 @@ remove_index(Session, TabName, Columns) ->
 		 TabName :: string(),
 		 Column :: string(),
 		 Term :: string()) ->
-    ok | {error, Reason :: term()}.
+    {ok, [posting()]} | {error, Reason :: term()}.
 index_read(Session, TabName, Column, Term) ->
-    pbpc_session:index_read(Session, TabName, Column, Term, undefined).
+    pbpc_session:index_read(Session, TabName, Column, Term, #{}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -353,13 +353,12 @@ index_read(Session, TabName, Column, Term) ->
 		 TabName :: string(),
 		 Column :: string(),
 		 Term :: string(),
-		 Limit :: pos_integer() | undefined) ->
-    ok | {error, Reason :: term()}.
-index_read(Session, TabName, Column, Term, Limit) when is_integer(Limit),
-						       Limit > 0 ->
-    pbpc_session:index_read(Session, TabName, Column, Term, Limit);
-index_read(Session, TabName, Column, Term, undefined) ->
-    pbpc_session:index_read(Session, TabName, Column, Term, undefined).
+		 Filter :: posting_filter()) ->
+    {ok, [posting()]} | {error, Reason :: term()}.
+index_read(Session, TabName, Column, Term, Filter) when is_map(Filter) ->
+    pbpc_session:index_read(Session, TabName, Column, Term, Filter);
+index_read(Session, TabName, Column, Term, _) ->
+    pbpc_session:index_read(Session, TabName, Column, Term, #{}).
 
 %%%===================================================================
 %%% Internal functions

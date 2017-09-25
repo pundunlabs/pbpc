@@ -64,3 +64,13 @@
 			{hash_exclude, [string()]} |
 			{hashing_method, hashing_method()} |
 			{tda, #tda{}}.
+
+-type posting() :: #{key := key(),
+		     ts := integer(),
+		     freq := integer(),
+		     pos := integer()}.
+
+-type posting_filter() :: #{sort_by := relevance | timestamp,
+                            start_ts := integer(),
+			    end_ts := integer(),
+			    max_postings := integer()}.
