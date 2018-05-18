@@ -44,7 +44,8 @@
 	 add_index/3,
 	 remove_index/3,
 	 index_read/4,
-	 index_read/5]).
+	 index_read/5,
+	 list_tables/1]).
 
 -include("pbpc.hrl").
 
@@ -359,6 +360,16 @@ index_read(Session, TabName, Column, Term, Filter) when is_map(Filter) ->
     pbpc_session:index_read(Session, TabName, Column, Term, Filter);
 index_read(Session, TabName, Column, Term, _) ->
     pbpc_session:index_read(Session, TabName, Column, Term, #{}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% List existing tables on the pudun node.
+%% @end
+%%--------------------------------------------------------------------
+-spec list_tables(Session :: pid()) ->
+    {ok, [string()]} | {error, Reason :: term()}.
+list_tables(Session) ->
+    pbpc_session:list_tables(Session).
 
 %%%===================================================================
 %%% Internal functions

@@ -51,7 +51,8 @@
 	 prev/2,
 	 add_index/3,
 	 remove_index/3,
-	 index_read/5]).
+	 index_read/5,
+	 list_tables/1]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -66,7 +67,6 @@
 	 handle_incomming_data/3]).
 
 -include("pbpc.hrl").
--include("apollo_pb.hrl").
 -include_lib("gb_log/include/gb_log.hrl").
 
 -record(request, {transaction_id,
@@ -74,12 +74,14 @@
 		  from}).
 
 -define(TID_THRESHOLD, 65535).
--define(REQ_TIMEOUT, 30000).
+-define(REQ_TIMEOUT, 60000).
 
--type pbp_table_option() :: {type, 'LEVELDB' | 'MEMLEVELDB' | 'LEVELDBWRAPPED' | 'MEMLEVELDBWRAPPED' | 'LEVELDBTDA' | 'MEMLEVELDBTDA'} |
+-type pbp_table_option() :: {type, 'ROCKSDB' | 'LEVELDB' | 'MEMLEVELDB' |
+				   'LEVELDBWRAPPED' | 'MEMLEVELDBWRAPPED' |
+				   'LEVELDBTDA' | 'MEMLEVELDBTDA'} |
 			    {data_model, 'KV' | 'ARRAY' | 'MAP'} |
-			    {wrapper, #'Wrapper'{}} |
-			    {mem_wrapper, #'Wrapper'{}} |
+			    {wrapper, #{}} |
+			    {mem_wrapper, #{}} |
 			    {comparator, 'DESCENDING' | 'ASCENDING'} |
 			    {time_series, boolean()} |
 			    {shards, integer()} |
@@ -87,7 +89,7 @@
 			    {replication_factor, integer()} |
 			    {hash_exclude, [string()]} |
 			    {hashing_method, 'VIRTUALNODES' | 'CONSISTENT' | 'UNIFORM' | 'RENDEZVOUS'} |
-			    {tda, #'Tda'{}}.
+			    {tda, #{}}.
 %% ------------------------------------------------------------------
 %% API Function Definitions
 %% ------------------------------------------------------------------
@@ -144,9 +146,9 @@ disconnect(Session) ->
 		   KeyDef :: [atom()], Options :: [table_option()])->
     ok | {error, Reason :: term()}.
 create_table(Session, TabName, KeyDef, Options) ->
-    P = #'CreateTable'{table_name = TabName,
-		       keys = KeyDef,
-		       table_options = make_set_of_table_option(Options)},
+    P = #{table_name => TabName,
+	  keys => KeyDef,
+	  table_options => make_set_of_table_option(Options)},
     transaction(Session, {create_table, P}).
 
 %%--------------------------------------------------------------------
@@ -157,7 +159,7 @@ create_table(Session, TabName, KeyDef, Options) ->
 -spec delete_table(Session :: pid(), TabName :: string())->
     ok | {error, Reason :: term()}.
 delete_table(Session, TabName) ->
-    P = #'DeleteTable'{table_name = TabName},
+    P = #{table_name => TabName},
     transaction(Session, {delete_table, P}).
 
 %%--------------------------------------------------------------------
@@ -168,7 +170,7 @@ delete_table(Session, TabName) ->
 -spec open_table(Session :: pid(), TabName :: string())->
     ok | {error, Reason :: term()}.
 open_table(Session, TabName) ->
-    P = #'OpenTable'{table_name = TabName},
+    P = #{table_name => TabName},
     transaction(Session, {open_table, P}).
 
 %%--------------------------------------------------------------------
@@ -179,7 +181,7 @@ open_table(Session, TabName) ->
 -spec close_table(Session :: pid(), TabName :: string())->
     ok | {error, Reason :: term()}.
 close_table(Session, TabName) ->
-    P = #'CloseTable'{table_name = TabName},
+    P = #{table_name => TabName},
     transaction(Session, {close_table, P}).
 
 %%--------------------------------------------------------------------
@@ -191,7 +193,8 @@ close_table(Session, TabName) ->
 		 TabName :: string()) ->
     [{atom(), term()}] | {error, Reason :: term()}.
 table_info(Session, TabName) ->
-    P = #'TableInfo'{table_name = TabName},
+    P = #{table_name => TabName,
+	  attributes => []},
     transaction(Session, {table_info, P}).
 
 %%--------------------------------------------------------------------
@@ -204,8 +207,8 @@ table_info(Session, TabName) ->
 		 Attributes :: [string()]) ->
     [{atom(), term()}] | {error, Reason :: term()}.
 table_info(Session, TabName, Attributes) ->
-    P = #'TableInfo'{table_name = TabName,
-		     attributes = Attributes},
+    P = #{table_name => TabName,
+	  attributes => Attributes},
     transaction(Session, {table_info, P}).
 
 %%--------------------------------------------------------------------
@@ -218,8 +221,8 @@ table_info(Session, TabName, Attributes) ->
 	   Key :: key())->
     {ok, value()} | {error, Reason :: term()}.
 read(Session, TabName, Key) ->
-    P = #'Read'{table_name = TabName,
-		key = make_seq_of_fields(Key)},
+    P = #{table_name => TabName,
+	  key => make_seq_of_fields(Key)},
     transaction(Session, {read, P}).
 
 %%--------------------------------------------------------------------
@@ -233,9 +236,9 @@ read(Session, TabName, Key) ->
 	    Columns :: [column()])->
     ok | {error, Reason :: term()}.
 write(Session, TabName, Key, Columns) ->
-    P = #'Write'{table_name = TabName,
-		 key = make_seq_of_fields(Key),
-		 columns = make_seq_of_fields(Columns)},
+    P = #{table_name => TabName,
+	  key => make_seq_of_fields(Key),
+	  columns => make_seq_of_fields(Columns)},
     transaction(Session, {write, P}).
 
 %%--------------------------------------------------------------------
@@ -259,9 +262,9 @@ write(Session, TabName, Key, Columns) ->
 	     Op :: [update_op()])->
     {ok, value()} | {error, Reason :: term()}.
 update(Session, TabName, Key, Op) ->
-    P = #'Update'{table_name = TabName,
-		  key = make_seq_of_fields(Key),
-		  update_operation = make_update_operations(Op)},
+    P = #{table_name => TabName,
+	  key => make_seq_of_fields(Key),
+	  update_operation => make_update_operations(Op)},
     transaction(Session, {update, P}).
 
 %%--------------------------------------------------------------------
@@ -274,8 +277,8 @@ update(Session, TabName, Key, Op) ->
 	     Key :: key())->
     ok | {error, Reason :: term()}.
 delete(Session, TabName, Key) ->
-    P = #'Delete'{table_name = TabName,
-		  key = make_seq_of_fields(Key)},
+    P = #{table_name => TabName,
+	  key => make_seq_of_fields(Key)},
     transaction(Session, {delete, P}).
 
 %%--------------------------------------------------------------------
@@ -291,10 +294,10 @@ delete(Session, TabName, Key) ->
 		 Chunk :: pos_integer()) ->
     {ok, [kvp()], Cont::complete | key()} | {error, Reason :: term()}.
 read_range(Session, TabName, StartKey, EndKey, Chunk) ->
-    P = #'ReadRange'{table_name = TabName,
-		     start_key = make_seq_of_fields(StartKey),
-		     end_key = make_seq_of_fields(EndKey),
-		     limit = Chunk},
+    P = #{table_name => TabName,
+	  start_key => make_seq_of_fields(StartKey),
+	  end_key => make_seq_of_fields(EndKey),
+	  limit => Chunk},
     transaction(Session, {read_range, P}).
 
 %%--------------------------------------------------------------------
@@ -309,9 +312,9 @@ read_range(Session, TabName, StartKey, EndKey, Chunk) ->
 		   N :: pos_integer()) ->
     {ok, [kvp()]} | {error, Reason :: term()}.
 read_range_n(Session, TabName, StartKey, N) ->
-    P = #'ReadRangeN'{table_name = TabName,
-		      start_key = make_seq_of_fields(StartKey),
-		      n = N},
+    P = #{table_name => TabName,
+	  start_key => make_seq_of_fields(StartKey),
+	  n => N},
     transaction(Session, {read_range_n, P}).
 
 %%--------------------------------------------------------------------
@@ -326,9 +329,9 @@ read_range_n(Session, TabName, StartKey, N) ->
 		  WriteKvps :: [kvp()]) ->
     ok | {error, Reason :: term()}.
 batch_write(Session, TabName, DeleteKeys, WriteKvps) ->
-    P = #'BatchWrite'{table_name = TabName,
-		      delete_keys = make_keys(DeleteKeys),
-		      write_kvps = make_kvls(WriteKvps)},
+    P = #{table_name => TabName,
+	  delete_keys => make_keys(DeleteKeys),
+	  write_kvps => make_kvls(WriteKvps)},
     transaction(Session, {batch_write, P}).
 
 %%--------------------------------------------------------------------
@@ -341,7 +344,7 @@ batch_write(Session, TabName, DeleteKeys, WriteKvps) ->
     {ok, KVP :: kvp(), Ref :: pid()} |
     {error, Reason :: invalid | term()}.
 first(Session, TabName) ->
-    P = #'First'{table_name = TabName},
+    P = #{table_name => TabName},
     transaction(Session, {first, P}).
 
 %%--------------------------------------------------------------------
@@ -354,7 +357,7 @@ first(Session, TabName) ->
     {ok, KVP :: kvp(), Ref :: pid()} |
     {error, Reason :: invalid | term()}.
 last(Session, TabName) ->
-    P = #'Last'{table_name = TabName},
+    P = #{table_name => TabName},
     transaction(Session, {last, P}).
 
 %%--------------------------------------------------------------------
@@ -368,8 +371,8 @@ last(Session, TabName) ->
     {ok, KVP :: kvp(), Ref :: pid()} |
     {error, Reason :: invalid | term()}.
 seek(Session, TabName, Key) ->
-    P = #'Seek'{table_name = TabName,
-		key = make_seq_of_fields(Key)},
+    P = #{table_name => TabName,
+	  key => make_seq_of_fields(Key)},
     transaction(Session, {seek, P}).
 
 %%--------------------------------------------------------------------
@@ -383,7 +386,7 @@ seek(Session, TabName, Key) ->
     {ok, KVP :: kvp()} |
     {error, Reason :: invalid | term()}.
 next(Session, Ref) ->
-    P = #'Next'{it = Ref},
+    P = #{it => Ref},
     transaction(Session, {next, P}).
 
 %%--------------------------------------------------------------------
@@ -397,7 +400,7 @@ next(Session, Ref) ->
     {ok, KVP :: kvp()} |
     {error, Reason :: invalid | term()}.
 prev(Session, Ref) ->
-    P = #'Prev'{it = Ref},
+    P = #{it => Ref},
     transaction(Session, {prev, P}).
 
 %%--------------------------------------------------------------------
@@ -410,8 +413,8 @@ prev(Session, Ref) ->
 		IndexConfig :: [{string(), map()}]) ->
     ok | {error, Reason :: term()}.
 add_index(Session, TabName, IndexConfig) ->
-    P = #'AddIndex'{table_name = TabName,
-		    config = make_index_config(IndexConfig)},
+    P = #{table_name => TabName,
+	  config => make_index_config(IndexConfig)},
     transaction(Session, {add_index, P}).
 
 %%--------------------------------------------------------------------
@@ -424,8 +427,8 @@ add_index(Session, TabName, IndexConfig) ->
 		   Columns :: [string()]) ->
     ok | {error, Reason :: term()}.
 remove_index(Session, TabName, Columns) ->
-    P = #'RemoveIndex'{table_name = TabName,
-		       columns = Columns},
+    P = #{table_name => TabName,
+	  columns => Columns},
     transaction(Session, {remove_index, P}).
 
 %%--------------------------------------------------------------------
@@ -444,15 +447,25 @@ index_read(Session, TabName, Column, Term, Filter) ->
     StartTs = maps:get(start_ts, Filter, undefined),
     EndTs = maps:get(end_ts, Filter, undefined),
     MaxPostings = maps:get(max_postings, Filter, undefined),
-    PostingFilter = #'PostingFilter'{sort_by = SortBy,
-				     start_ts = StartTs,
-				     end_ts = EndTs,
-				     max_postings = MaxPostings},
-    P = #'IndexRead'{table_name = TabName,
-		     column_name = Column,
-		     term = Term,
-		     filter = PostingFilter},
+    PostingFilter = #{sort_by => SortBy,
+		      start_ts => StartTs,
+		      end_ts => EndTs,
+		      max_postings => MaxPostings},
+    P = #{table_name => TabName,
+	  column_name => Column,
+	  term => Term,
+	  filter => PostingFilter},
     transaction(Session, {index_read, P}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% List existing tables on the pundun node.
+%% @end
+%%--------------------------------------------------------------------
+-spec list_tables(Session :: pid()) ->
+    {ok, [string()]} | {error, Reason :: term()}.
+list_tables(Session) ->
+    transaction(Session, {list_tables, #{}}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -498,8 +511,8 @@ init(Args) ->
 		   counter => Counter,
 		   timeout => ?REQ_TIMEOUT,
 		   monitor_ref => MonitorRef}};
-	{error, _Reason} ->
-	    {stop, normal}
+	{error, Reason} ->
+	    {stop, Reason}
     end.
 
 %%--------------------------------------------------------------------
@@ -588,7 +601,7 @@ transaction(Session, Procedure) ->
       timeout := TO} = gen_server:call(Session, get_state),
     {Tid, PDU} = get_pdu(Counter, Procedure),
     ?debug("Encoding PDU: ~p", [PDU]),
-    Bin = apollo_pb:encode_msg(PDU),
+    Bin = apollo_pb:encode_msg(PDU, 'ApolloPdu'),
     CorrId = encode_unsigned_16(Tid),
     case send(Socket, CorrId, Bin) of
 	ok ->
@@ -764,17 +777,17 @@ lookup_request(TR, CorrId) ->
 
 -spec get_pdu(Counter :: integer(),
 	      Procedure :: {atom(), term()}) ->
-    {integer(), #'ApolloPdu'{}}.
+    {integer(), #{}}.
 get_pdu(Counter, Procedure) ->
     Tid = get_transaction_id(Counter),
-    {Tid, #'ApolloPdu'{version = get_version(),
-		       transaction_id = Tid,
-		       procedure = Procedure}}.
+    {Tid, #{version => get_version(),
+	    transaction_id => Tid,
+	    procedure => Procedure}}.
 
 -spec get_version() ->
-    #'Version'{}.
+    #{}.
 get_version() ->
-    #'Version'{major = 1, minor = 0}.
+    #{major => 1, minor => 0}.
 
 -spec get_transaction_id(Counter :: integer()) ->
     Tid :: integer().
@@ -789,68 +802,70 @@ decode(Data)->
     ?debug("Response decoded: ~p", [PDU]),
     get_return_value(PDU).
 
--spec get_return_value(PDU :: #'ApolloPdu'{}) ->
+-spec get_return_value(PDU :: #{}) ->
     Response :: term().
-get_return_value(#'ApolloPdu'{procedure =
-		    {response, #'Response'{result = {ok, "ok"}}}}) ->
+get_return_value(#{procedure := {response, #{result := {ok, "ok"}}}}) ->
     ok;
-get_return_value(#'ApolloPdu'{procedure =
-		    {response, #'Response'{result = {columns, Columns}}}}) ->
+get_return_value(#{procedure := {response, #{result := {columns, Columns}}}}) ->
     {ok, strip_fields(Columns)};
-get_return_value(#'ApolloPdu'{procedure =
-		    {response, #'Response'{result =
+get_return_value(#{procedure :=
+		    {response, #{result :=
 			{key_columns_pair,
-			    #'KeyColumnsPair'{key = Key,
-					      columns = Columns}}}}}) ->
+			    #{key := Key,
+			      columns := Columns}}}}}) ->
     {ok, {strip_fields(Key), strip_fields(Columns)}};
-get_return_value(#'ApolloPdu'{procedure =
-		    {response, #'Response'{result =
+get_return_value(#{procedure :=
+		    {response, #{result :=
 			{key_columns_list,
-			    #'KeyColumnsList'{list = List,
-					      continuation = Cont}}}}}) ->
+			    #{list := List,
+			      continuation := Cont}}}}}) ->
     Kcl = [begin
 	    {strip_fields(K), strip_fields(C)}
-	   end || #'KeyColumnsPair'{key = K, columns = C} <- List],
+	   end || #{key := K, columns := C} <- List],
     case Cont of
 	undefined ->
 	    {ok, Kcl};
-	#'Continuation'{complete = true} ->
+	#{complete := true} ->
 	    {ok, Kcl, complete};
-	#'Continuation'{complete = false, key = Key} ->
+	#{complete := false, key := Key} ->
 	    {ok, Kcl, strip_fields(Key)}
     end;
-get_return_value(#'ApolloPdu'{procedure =
-		    {response, #'Response'{result =
-			{proplist, Proplist}}}}) ->
+get_return_value(#{procedure :=
+		    {response, #{result :=
+			{proplist, #{fields := Proplist}}}}}) ->
     Result = strip_fields(Proplist),
     {ok, Result};
-get_return_value(#'ApolloPdu'{procedure =
-		    {response, #'Response'{result =
-			{kcp_it, #'KcpIt'{key_columns_pair =
-					    #'KeyColumnsPair'{key = K,
-							      columns = V},
-					 it = It}}}}}) ->
+get_return_value(#{procedure :=
+		    {response, #{result :=
+			{kcp_it, #{key_columns_pair :=
+					    #{key := K,
+					      columns := V},
+					    it := It}}}}}) ->
     {ok, {strip_fields(K), strip_fields(V)}, It};
-get_return_value(#'ApolloPdu'{procedure =
-		    {response, #'Response'{result =
-			{postings, #'Postings'{list = Postings}}}}}) ->
+get_return_value(#{procedure :=
+		    {response, #{result :=
+			{postings, #{list := Postings}}}}}) ->
     {ok, [#{key => strip_fields(K),
 	    timestamp => Ts,
 	    frequency => Freq,
 	    position => Pos}
-	    || #'Posting'{key = K,
-			  timestamp = Ts,
-			  frequency = Freq,
-			  position = Pos} <- Postings]};
-get_return_value(#'ApolloPdu'{procedure =
-		    {error, #'Error'{cause = Cause}}}) ->
+    || #{key := K,
+	timestamp := Ts,
+	frequency := Freq,
+	position := Pos} <- Postings]};
+get_return_value(#{procedure :=
+		    {response,
+			#{result :=
+			    {string_list, #{field_names := StringList}}}}}) ->
+    {ok, StringList};
+get_return_value(#{procedure := {error, #{cause := Cause}}}) ->
     {error, Cause}.
 
 -spec make_set_of_table_option(Options :: [table_option()]) ->
-    [#'TableOption'{}].
+    [#{}].
 make_set_of_table_option(Options) ->
     List = make_set_of_table_option(Options, []),
-    [#'TableOption'{opt = O} || O <- List].
+    [#{opt => O} || O <- List].
 
 -spec make_set_of_table_option(Options :: [table_option()],
 			       Acc :: [pbp_table_option()]) ->
@@ -862,19 +877,17 @@ make_set_of_table_option([{type, T}|Rest], Acc) ->
 make_set_of_table_option([{data_model, DT}|Rest], Acc) ->
     make_set_of_table_option(Rest, [translate_options({data_model, DT}) | Acc]);
 make_set_of_table_option([{wrapper, Wrp} | Rest], Acc) ->
-    Wrapper = setelement(1, Wrp, 'Wrapper'),
-    make_set_of_table_option(Rest, [{wrapper, Wrapper} | Acc]);
+    make_set_of_table_option(Rest, [{wrapper, Wrp} | Acc]);
 make_set_of_table_option([{mem_wrapper, Wrp}|Rest], Acc) ->
-    Wrapper = setelement(1, Wrp, 'Wrapper'),
-    make_set_of_table_option(Rest, [{mem_wrapper, Wrapper} | Acc]);
-make_set_of_table_option([{tda, #tda{num_of_buckets = NB,
-				     time_margin = TM,
-				     ts_field = TF,
-				     precision = P}}|Rest], Acc) ->
-    Tda = #'Tda'{num_of_buckets = NB,
-		 time_margin = TM,
-		 ts_field = TF,
-		 precision = translate_precision(P)},
+    make_set_of_table_option(Rest, [{mem_wrapper, Wrp} | Acc]);
+make_set_of_table_option([{tda, #{num_of_buckets := NB,
+				  time_margin := TM,
+				  ts_field := TF,
+				  precision := P}} | Rest], Acc) ->
+    Tda = #{num_of_buckets => NB,
+	    time_margin => TM,
+	    ts_field => TF,
+	    precision => translate_precision(P)},
     make_set_of_table_option(Rest, [{tda, Tda} | Acc]);
 make_set_of_table_option([{comparator, C}|Rest], Acc) ->
     make_set_of_table_option(Rest, [translate_options({comparator, C}) | Acc]);
@@ -897,59 +910,51 @@ make_set_of_table_option([_Else|Rest], Acc) ->
     make_set_of_table_option(Rest, Acc).
 
 -spec make_seq_of_fields(Key :: [{string(), term()}]) ->
-    [#'Field'{}].
+    [#{name := Name :: string(), value := Value :: term()}].
 make_seq_of_fields(Key) when is_list(Key)->
-    [#'Field'{name = Name, value = make_value(Value)}
+    [#{name => Name, value => make_value(Value)}
 	|| {Name, Value} <- Key];
 make_seq_of_fields(Else)->
     ?debug("Invalid key: ~p",[Else]),
     Else.
 
 -spec make_value(V :: term()) ->
-    {bool, Bool :: true | false} |
-    {int, Int :: integer()} |
-    {binary, Bin :: binary()} |
-    {null, Null :: undefined} |
-    {double, Double :: binary()} |
-    {binary, Str :: binary()} |
-    {string, Str :: [integer()]}.
+    #{type := Value :: {binary | int | double | boolean |
+			string | list | null | map, term()}}.
 make_value(V) when is_binary(V) ->
-    {binary, V};
+    #{type => {binary, V}};
 make_value(V) when is_integer(V) ->
-    {int, V};
+    #{type => {int, V}};
 make_value(V) when is_float(V) ->
-    {double, V};
+    #{type => {double, V}};
 make_value(true) ->
-    {boolean, true};
+    #{type => {boolean, true}};
 make_value(false) ->
-    {boolean, false};
-make_value(V) when is_list(V) ->
-    case is_list_of_printables(V) of
-	{true, L} ->
-	    {string, L};
+    #{type => {boolean, false}};
+make_value(L) when is_list(L) ->
+    case io_lib:printable_unicode_list(L) of
+	true ->
+	    #{type => {string, L}};
 	false ->
-	    {binary, list_to_binary(V)}
+	    #{type => {list, #{values=>[make_value(E) || E <- L]}}}
     end;
 make_value(undefined) ->
-    {null, 'NULL'};
+    #{type => {null, <<>>}};
 make_value(A) when is_atom(A) ->
-    {string, atom_to_list(A)};
+    #{type => {string, atom_to_list(A)}};
+make_value(Map) when is_map(Map) ->
+    Fun =
+	fun(K, V, Acc) when is_list(K) ->
+	    Acc#{K => make_value(V)};
+	   (K, V, Acc) when is_atom(K) ->
+	    Acc#{atom_to_list(K) => make_value(V)}
+	end,
+    #{type => {map, #{values => maps:fold(Fun, #{}, Map)}}};
 make_value(T) when is_tuple(T) ->
-    {binary, term_to_binary(T)}.
-
-is_list_of_printables(L) ->
-    case io_lib:printable_unicode_list(L) of
-        true -> {true, L};
-	false ->
-	    case io_lib:printable_unicode_list(lists:flatten(L)) of
-		true ->
-		    {true, lists:flatten([E++" "||E <- L])};
-		false -> false
-	    end
-    end.
+    make_value(tuple_to_list(T)).
 
 -spec make_keys(Keys :: [[{string(), term()}]]) ->
-    [[#'Field'{}]].
+    [[#{}]].
 make_keys(Keys) when is_list(Keys) ->
     [make_seq_of_fields(K) || K <- Keys];
 make_keys(Else) ->
@@ -957,36 +962,32 @@ make_keys(Else) ->
     Else.
 
 -spec make_kvls(Kvls :: [ {[{string(), term()}], [{string(), term()}]} ]) ->
-    [#'KeyColumnsPair'{}].
+    [#{}].
 make_kvls(Kvls) when is_list(Kvls)->
-    [#'KeyColumnsPair'{key = make_seq_of_fields(Key),
-		       columns = make_seq_of_fields(Columns)}
-	|| {Key, Columns} <- Kvls];
+    [#{key => make_seq_of_fields(Key),
+       columns => make_seq_of_fields(Columns)} || {Key, Columns} <- Kvls];
 make_kvls(Else) ->
     ?debug("Invalid key/columns tuple list: ~p",[Else]),
     Else.
 
--spec strip_fields(Fields :: [#'Field'{}] | #'Fields'{}) ->
+-spec strip_fields(Fields :: [#{name := binary(),
+				value := term()}]) ->
     [{string(), term()}].
-strip_fields(#'Fields'{fields = Fields}) ->
-    strip_fields(Fields, []);
 strip_fields(Fields) ->
     strip_fields(Fields, []).
 
--spec strip_fields(Fields :: [#'Field'{}],
+-spec strip_fields(Fields :: [#{name := binary(),
+				value := term()}],
 		   Acc :: [{string(), term()}]) ->
     [{string(), term()}].
-strip_fields([#'Field'{name = N, value = {boolean, B}} | Rest], Acc) ->
-    Bool = case B of
-	    0 -> false;
-	    1 -> true;
-	    B -> B
-	   end,
-    strip_fields(Rest, [{N, Bool} | Acc]);
-strip_fields([#'Field'{name = N, value = {null, _}} | Rest], Acc) ->
-    strip_fields(Rest, [{N, undefined} | Acc]);
-strip_fields([#'Field'{name = N, value = {_, V}} | Rest], Acc) ->
-    strip_fields(Rest, [{N, V} | Acc]);
+strip_fields([#{value := undefined} = F| Rest], Acc) ->
+    ?warning("Unset field received: ~p", [F]),
+    strip_fields(Rest, Acc);
+strip_fields([#{value := #{type := undefined}} = F | Rest], Acc) ->
+    ?warning("Unset field value received: ~p", [F]),
+    strip_fields(Rest, Acc);
+strip_fields([#{name := N, value := Value} | Rest], Acc) ->
+    strip_fields(Rest, [{N, translate_value(Value)} | Acc]);
 strip_fields([], Acc) ->
     lists:reverse(Acc).
 
@@ -1036,61 +1037,60 @@ translate_precision(nanosecond)-> 'NANOSECOND';
 translate_precision(P)-> P.
 
 -spec make_update_operations(Op :: update_op()) ->
-    [#'UpdateOperation'{}].
+    [#{}].
 make_update_operations(Op) ->
     make_update_operations(Op, []).
 
--spec make_update_operations(Op :: update_op(),
-			     Acc :: [#'UpdateOperation'{}]) ->
-    [#'UpdateOperation'{}].
+-spec make_update_operations(Op :: update_op(), Acc :: [#{}]) ->
+    [#{}].
 make_update_operations([{F, Inst, Data} | Rest], Acc) ->
-    UpOp = #'UpdateOperation'{field = F,
-			      update_instruction = make_update_instruction(Inst),
-			      value = #'Value'{value=make_value(Data)}},
+    UpOp = #{field => F,
+	     update_instruction => make_update_instruction(Inst),
+	     value => make_value(Data)},
     make_update_operations(Rest, [UpOp | Acc]);
 make_update_operations([{F, Inst, Data, Default} | Rest], Acc) ->
-    UpOp = #'UpdateOperation'{field = F,
-			      update_instruction = make_update_instruction(Inst),
-			      value = #'Value'{value=make_value(Data)},
-			      default_value = #'Value'{value=make_value(Default)}},
+    UpOp = #{field => F,
+	     update_instruction => make_update_instruction(Inst),
+	     value => make_value(Data),
+	     default_value => make_value(Default)},
     make_update_operations(Rest, [UpOp | Acc]);
 make_update_operations([], Acc) ->
     lists:reverse(Acc).
 
 -spec make_update_instruction(Inst :: update_instruction()) ->
-    #'UpdateInstruction'{}.
+    #{}.
 make_update_instruction(increment) ->
-    #'UpdateInstruction'{instruction = 'INCREMENT',
-			 threshold = <<>>,
-			 set_value = <<>>};
+    #{instruction => 'INCREMENT',
+      threshold => <<>>,
+      set_value => <<>>};
 make_update_instruction({increment, T, S}) ->
-    #'UpdateInstruction'{instruction = 'INCREMENT',
-			 threshold = binary:encode_unsigned(T, big),
-			 set_value = binary:encode_unsigned(S, big)};
+    #{instruction => 'INCREMENT',
+      threshold => binary:encode_unsigned(T, big),
+      set_value => binary:encode_unsigned(S, big)};
 make_update_instruction(overwrite) ->
-    #'UpdateInstruction'{instruction = 'OVERWRITE',
-			 threshold = <<>>,
-			 set_value = <<>>}.
+    #{instruction => 'OVERWRITE',
+      threshold => <<>>,
+      set_value => <<>>}.
 
 -spec make_index_config(IndexConfig :: [{Column :: string(), Opts :: map()}]) ->
-    [#'IndexConfig'{}].
+    [#{}].
 make_index_config(IndexConfig) ->
     make_index_config(IndexConfig, []).
 
 make_index_config([{Column, Config} | Rest], Acc) ->
-    IndexConfig = #'IndexConfig'{column = Column,
-				 options = make_index_options(Config)},
+    IndexConfig = #{column => Column,
+		    options => make_index_options(Config)},
     make_index_config(Rest, [IndexConfig | Acc]);
 make_index_config([Column | Rest], Acc) when is_list(Column)->
-    IndexConfig = #'IndexConfig'{column = Column},
+    IndexConfig = #{column => Column},
     make_index_config(Rest, [IndexConfig | Acc]);
 make_index_config([], Acc) ->
     lists:reverse(Acc).
 
 make_index_options(Config) when is_map(Config) ->
-   #'IndexOptions'{char_filter = make_char_filter(Config),
-		   tokenizer = make_tokenizer(Config),
-		   token_filter = make_token_filter(Config)};
+   #{char_filter => make_char_filter(Config),
+     tokenizer => make_tokenizer(Config),
+     token_filter => make_token_filter(Config)};
 make_index_options(_) ->
     undefined.
 
@@ -1111,10 +1111,10 @@ make_tokenizer(_) ->
     undefined.
 
 make_token_filter(#{token_filter := TokenFilter} ) ->
-    #'TokenFilter'{transform = make_token_transform(TokenFilter),
-		   add = make_token_add_filter(TokenFilter),
-		   delete = make_token_delete_filter(TokenFilter),
-		   stats = make_token_stats(TokenFilter)};
+    #{transform => make_token_transform(TokenFilter),
+      add => make_token_add_filter(TokenFilter),
+      delete => make_token_delete_filter(TokenFilter),
+      stats => make_token_stats(TokenFilter)};
 make_token_filter(_) ->
     undefined.
 
@@ -1159,3 +1159,26 @@ make_token_stats(_) ->
     'RELEVANCE' | 'TIMESTAMP'.
 translate_sort_by(timestamp)-> 'TIMESTAMP';
 translate_sort_by(_)-> 'RELEVANCE'.
+
+-spec translate_value(#{type := tuple()} | undefined) ->
+    term().
+translate_value(#{type := {boolean, Term}}) ->
+    Term;
+translate_value(#{type := {int, Term}}) ->
+    Term;
+translate_value(#{type := {binary, Term}}) ->
+    Term;
+translate_value(#{type := {null, _}}) ->
+    undefined;
+translate_value(#{type := {double, Term}}) ->
+    Term;
+translate_value(#{type := {string, Term}}) ->
+    Term;
+translate_value(#{type := {list, #{values := Values}}}) ->
+    [translate_value(V) || #{type := Tuple} = V <- Values, Tuple =/= undefined];
+translate_value(#{type := {map, #{values := Values}}}) ->
+    Fun =
+	fun(K, #{type := T} = V, Acc) when is_binary(K), is_tuple(T) ->
+	    Acc#{K => translate_value(V)}
+	end,
+    maps:fold(Fun, #{}, Values).
